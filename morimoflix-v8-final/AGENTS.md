@@ -1,4 +1,4 @@
-# AGENTS.md - Morimoflix v9.0 Theme
+# AGENTS.md - Morimoflix v9.20 Theme
 
 # Available specialists:
 
@@ -24,7 +24,7 @@
 
 - **Theme Name:** Morimoflix Flicker
 - **Text domain:** `morimoflix-flicker` (not `morimoflix`)
-- **Version:** `5.1.0` (in `style.css` header AND `functions.php` `MORIMOFLIX_VERSION` — keep in sync)
+- **Version:** `5.5.0` (in `style.css` header AND `functions.php` `MORIMOFLIX_VERSION` — keep in sync)
 - **PHP:** 7.4+ required
 - **Structure:** Flat — ALL PHP functions in `functions.php`. No `inc/`, `production/`, or `templates/` directories.
 - **CSS:** Tailwind CDN in `header.php` `<style>` block. `style.css` contains ONLY the WordPress theme header comment — no CSS rules.
@@ -74,16 +74,16 @@ Use `!important` to override inline styles. Place the `<style>` block in the sam
 | **NEVER** create new folders | Always work in the SAME folder (`morimoflix-v8-final/`) |
 | **NEVER** create multiple zips | Only ONE zip file at a time |
 | How to version | Rename the zip: `morimoflix-v8.zip` → `morimoflix-v8.1.zip` |
-| AGENTS.md title | Must reflect current version: `# AGENTS.md - Morimoflix v9.0 Theme` |
-| File Structure path | Must reflect current version: `morimoflix-v9.0/` |
-| Current version | **v9.0** (Fixed taxonomy pagination — genre & actor pages) |
+| AGENTS.md title | Must reflect current version: `# AGENTS.md - Morimoflix v9.20 Theme` |
+| File Structure path | Must reflect current version: `morimoflix-v9.20/` |
+| Current version | **v9.20** (TV series: import, `single-tv.php`, season/quality/codec accordion) |
 
 ### Version Bump Workflow
 
 1. Make code changes inside `morimoflix-v8-final/`
-2. Delete the old zip: `Remove-Item "C:\Users\MR.PC\Desktop\theme\morimoflix-v8.6.zip"`
+2. Delete the old zip: `Remove-Item "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.14.zip"`
 3. Bump version in AGENTS.md title and file structure path
-4. Recreate zip with bumped name: `morimoflix-v9.0.zip`
+4. Recreate zip with bumped name: `morimoflix-v9.20.zip`
 5. No new folders. No extra copies. One zip only.
 
 ### Zip Packaging Command
@@ -91,13 +91,13 @@ Use `!important` to override inline styles. Place the `<style>` block in the sam
 ```powershell
 # After every change, bump version and recreate zip
 Set-Location "C:\Users\MR.PC\Desktop\theme\morimoflix-v8-final"
-Compress-Archive -Path "style.css","functions.php","header.php","footer.php","front-page.php","index.php","single.php","single-movie.php","search.php","archive.php","page.php","page-list.php","taxonomy-genre.php","taxonomy-actor.php","assets","AGENTS.md","README.md" -DestinationPath "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.0.zip" -Force
+Compress-Archive -Path "style.css","functions.php","header.php","footer.php","front-page.php","index.php","single.php","single-movie.php","single-tv.php","search.php","archive.php","page.php","page-list.php","taxonomy-genre.php","taxonomy-actor.php","assets","inc","AGENTS.md","README.md" -DestinationPath "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.20.zip" -Force
 ```
 
 ## File Structure
 
 ```
-morimoflix-v9.0/
+morimoflix-v9.20/
 ├── style.css              # WordPress theme header ONLY (no CSS rules!)
 ├── functions.php          # ALL PHP: CPTs, taxonomies, meta boxes, enqueue, helpers, AJAX
 ├── header.php             # Tailwind config, <style> block, navbar, mobile menu, modals + JS
@@ -105,6 +105,7 @@ morimoflix-v9.0/
 ├── front-page.php         # Static front page: hero + filter + grid + pagination + categories
 ├── index.php              # Homepage fallback: hero + filter + grid + pagination + categories
 ├── single-movie.php       # Movie detail: poster, meta, description, downloads, related
+├── single-tv.php          # Series detail: season/quality/codec download accordion
 ├── single.php             # Blog post template
 ├── search.php             # Search results
 ├── archive.php            # Archive pages
@@ -121,12 +122,12 @@ morimoflix-v9.0/
 └── README.md              # Theme documentation
 ```
 
-## File Sizes (v5.1.0)
+## File Sizes (v5.2.3)
 
 | File | Size |
 |------|------|
-| functions.php | 36,353 B |
-| header.php | 30,858 B |
+| functions.php | 63,187 B |
+| header.php | 74,893 B |
 | front-page.php | 18,964 B |
 | index.php | 17,102 B |
 | single-movie.php | 13,833 B |
@@ -270,8 +271,8 @@ Admin page at `?page=movie-requests`. Supports bulk actions: mark_fulfilled, mar
 Use explicit file list — never compress the parent folder:
 
 ```powershell
-Set-Location "C:\Users\MR.PC\Desktop\theme\morimoflix-v8"
-Compress-Archive -Path "style.css","functions.php","header.php","footer.php","front-page.php","index.php","single.php","single-movie.php","search.php","archive.php","page.php","page-list.php","taxonomy-genre.php","taxonomy-actor.php","assets","AGENTS.md","README.md" -DestinationPath "C:\Users\MR.PC\Desktop\theme\morimoflix-v8.zip" -Force
+Set-Location "C:\Users\MR.PC\Desktop\theme\morimoflix-v8-final"
+Compress-Archive -Path "style.css","functions.php","header.php","footer.php","front-page.php","index.php","single.php","single-movie.php","single-tv.php","search.php","archive.php","page.php","page-list.php","taxonomy-genre.php","taxonomy-actor.php","assets","inc","AGENTS.md","README.md" -DestinationPath "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.20.zip" -Force
 ```
 
 **Verify zip root** — `style.css` must be at the root, NOT inside a subfolder.
