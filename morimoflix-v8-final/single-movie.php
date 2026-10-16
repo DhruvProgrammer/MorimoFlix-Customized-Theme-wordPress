@@ -298,8 +298,13 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
             <p class="mf-tagline"><?php echo esc_html( $meta['tagline'] ); ?></p>
             <?php endif; ?>
 
-            <?php if ( has_excerpt() ) : ?>
-            <p class="mf-desc"><?php echo esc_html( get_the_excerpt() ); ?></p>
+            <?php
+            // Read the excerpt once: the predicate and the rendered text must agree, even if a
+            // third party ever attaches a non-idempotent 'get_the_excerpt' filter.
+            $mf_excerpt = has_excerpt() ? get_the_excerpt() : '';
+            if ( '' !== $mf_excerpt && ! morimoflix_texts_are_duplicate( $mf_excerpt, $meta['tagline'] ) ) :
+            ?>
+            <p class="mf-desc"><?php echo esc_html( $mf_excerpt ); ?></p>
             <?php endif; ?>
 
             <div class="mf-meta">

@@ -785,6 +785,91 @@ function morimoflix_get_actor_link( $actor_name ) {
 }
 
 /**
+ * Compare two human-facing strings (tagline vs excerpt) for sameness.
+ *
+ * Some TMDB imports store the identical sentence in both `_movie_tagline` and the post
+ * excerpt, which makes the detail template render the same line twice. Normalising away
+ * HTML, entities, case and punctuation lets the template drop the redundant copy.
+ *
+ * Fails safe: it returns false (show the description) unless both sides carry a real
+ * letter and normalise to exactly the same words. It will never hide a description whose
+ * wording differs -- only one that differs from the tagline by case, spacing, punctuation
+ * or markup spelling alone.
+ *
+ * @param mixed $a First string. Non-scalars are treated as empty.
+ * @param mixed $b Second string. Non-scalars are treated as empty.
+ * @return bool True when both strings carry the same words.
+ */
+function morimoflix_texts_are_duplicate( $a, $b ) {
+    // The comparison key strips markup, but esc_html() RENDERS markup literally. So markup
+    // on only one side would be deleted from that side's key and invent a match that the
+    // reader does not see -- "Kill Bill <Vol 2> is here" vs "Kill Bill is here". Detect
+    // that asymmetry up front and decline. Entities are fine: decoding is symmetric and
+    // esc_html() renders them identically, so only real tag syntax is checked here.
+    $has_tag = function ( $text ) {
+        return is_scalar( $text ) && 1 === preg_match( '/<[^>]*>/s', (string) $text );
+    };
+    if ( $has_tag( $a ) !== $has_tag( $b ) ) {
+        return false;
+    }
+
+    $normalise = function ( $text ) {
+        // is_scalar() keeps a serialised array from reaching wp_check_invalid_utf8().
+        // Validate the encoding HERE, before anything else, so malformed bytes cannot warn
+        // inside the /u regex below (which would print into the page on every render when
+        // WP_DEBUG_DISPLAY is on) nor be mangled by the decode/case-fold steps. Note this
+        // is a pass-through when the site charset is not UTF-8, so it is a best effort and
+        // the null guard after preg_replace() remains the real safety net.
+        $text = is_scalar( $text ) ? wp_check_invalid_utf8( (string) $text ) : '';
+        // Strip BEFORE decoding, deliberately. Decoding first would turn an entity-escaped
+        // "&lt;b&gt;Hi&lt;/b&gt;" into real markup, strip it away, and leave "hi" -- which then
+        // collides with a plain "Hi" tagline. They render differently, so that would hide a
+        // description for no reason.
+        $text = wp_strip_all_tags( $text, true );
+        // ENT_HTML5 so named entities TMDB likes to emit (&rsquo;, &mdash;, &hellip;) collapse too.
+        $text = html_entity_decode( $text, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        // Fold to NFC. Devanagari arrives both precomposed (U+0958) and decomposed
+        // (U+0915 U+093C) depending on the importer, the filesystem or a copy-paste; the two
+        // render identically but have different codepoint sequences. NFC is a canonical
+        // normalisation, so it can only merge strings that already render the same.
+        // Guard on the CLASS as well as the function: a polyfill can define
+        // normalizer_normalize() without a global Normalizer class, and referencing the
+        // missing class is a fatal Error. WordPress core hit exactly this (Trac #56980).
+        // The form argument is the default, so it is left off entirely.
+        if ( function_exists( 'normalizer_normalize' ) && class_exists( 'Normalizer' ) ) {
+            $normalized = normalizer_normalize( $text );
+            if ( is_string( $normalized ) ) {
+                $text = $normalized;
+            }
+        }
+        // After decoding, so entity-produced letters fold too (&THORN; vs &thorn;).
+        // strtolower() is ASCII-only and misses accented and Greek letters.
+        $text = function_exists( 'mb_strtolower' ) ? mb_strtolower( $text, 'UTF-8' ) : strtolower( $text );
+        // \p{M} MUST stay in the class. Devanagari/Telugu vowel signs, the nukta, Arabic
+        // harakat and Hebrew points are \p{Mn}|\p{Mc} -- NOT \p{L}. Leaving them out turned
+        // every one into a space, which both shredded Hindi text and made distinct words
+        // compare EQUAL (maana/min, gaana/ginaa, sona/sinaa all collapsed to the same key),
+        // silently hiding a genuinely different description.
+        $text = preg_replace( '/[^\p{L}\p{M}\p{N}]+/u', ' ', $text );
+
+        // preg_replace() with /u returns null on malformed UTF-8; never feed that to trim()
+        // (deprecated as of PHP 8.1).
+        return null === $text ? '' : trim( $text );
+    };
+
+    $a = $normalise( $a );
+    $b = $normalise( $b );
+
+    // Require a real letter on both sides. Numeric-only ("2026") or symbol-only keys carry
+    // no words worth de-duplicating and must never suppress a description.
+    if ( ! preg_match( '/\p{L}/u', $a ) || ! preg_match( '/\p{L}/u', $b ) ) {
+        return false;
+    }
+
+    return $a === $b;
+}
+
+/**
  * TV-series specific meta, layered on top of the shared movie meta.
  *
  * The shared keys (_movie_rating / _movie_year / _movie_language / _movie_quality /
