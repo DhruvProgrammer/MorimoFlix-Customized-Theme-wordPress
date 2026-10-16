@@ -344,6 +344,9 @@
         }
         .btn-primary:hover { background: #F6121D; border-color: #F6121D; box-shadow: 0 4px 20px rgba(229, 9, 20, 0.4); }
         .btn-primary:active { transform: scale(0.98); }
+        /* The submit button is held disabled until Turnstile issues a token.
+           Without this it looks identical to enabled and reads as a dead button. */
+        .btn-primary:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; box-shadow: none; transform: none; }
         .btn-secondary {
             display: inline-flex;
             align-items: center;
@@ -1142,7 +1145,7 @@
 </div>
 
 <!-- Movie Request Modal (deferred: inert <template> until idle/intent — zero first-paint cost; shell keeps z-[300]) -->
-<div id="movieRequestModal" class="fixed inset-0 z-[300] hidden" hidden aria-hidden="true"></div>
+<div id="movieRequestModal" class="fixed inset-0 z-[300] hidden" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="movieRequestTitle"></div>
 <template id="movieRequestTemplate">
     <!-- Overlay -->
     <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" id="movieRequestOverlay"></div>
@@ -1154,7 +1157,7 @@
             <div class="flex items-center justify-between p-4 md:p-6 border-b border-white/10">
                 <div class="flex items-center gap-3">
                     <span class="material-symbols-outlined text-primary text-xl md:text-2xl" style="font-variation-settings: 'FILL' 1;">movie</span>
-                    <h2 class="text-base md:text-lg font-bold uppercase tracking-wider text-white">Request a Movie</h2>
+                    <h2 id="movieRequestTitle" class="text-base md:text-lg font-bold uppercase tracking-wider text-white">Request a Movie</h2>
                 </div>
                 <button type="button" id="movieRequestClose" aria-label="Close dialog" class="text-muted hover:text-white transition-colors p-1">
                     <span class="material-symbols-outlined text-xl">close</span>
@@ -1187,6 +1190,21 @@
                         placeholder="https://www.imdb.com/title/...">
                 </div>
                 
+                <!-- Cloudflare Turnstile. Lazy-loaded on first modal open, so this is an
+     empty holder until then. min-height reserves the row to avoid a layout
+     shift when Cloudflare injects its iframe. -->
+                <?php if ( morimoflix_turnstile_enabled() ) : ?>
+                <div id="movieRequestTurnstile" class="cf-turnstile w-full my-4 flex items-center justify-center"
+                    data-sitekey="<?php echo esc_attr( morimoflix_turnstile_site_key() ); ?>"
+                    data-theme="dark"
+                    data-size="flexible"
+                    data-appearance="interaction-only"></div>
+                <?php endif; ?>
+
+                <!-- Message (above the button: an error must be visible at the
+                     point the user just tapped) -->
+                <div id="movieRequestMessage" role="alert" aria-live="polite" class="hidden text-center text-sm font-body-md"></div>
+
                 <!-- Submit Button -->
                 <button type="submit" id="movieRequestSubmit"
                     class="btn-primary w-full uppercase tracking-wider text-sm md:text-base mt-6">
@@ -1194,8 +1212,7 @@
                     Submit Request
                 </button>
                 
-                <!-- Message -->
-                <div id="movieRequestMessage" class="hidden text-center text-sm font-body-md"></div>
+                <!-- Message (duplicate id removed; single live region above the button) -->
             </form>
         </div>
     </div>
@@ -1210,6 +1227,14 @@
     #movieRequestModal[hidden] {
         display: none !important;
     }
+    /* Turnstile holder. This CANNOT use a Tailwind arbitrary value
+       (min-h-[65px]) — assets/css/app.css is a pre-built artifact containing
+       zero arbitrary-value utilities, so such a class silently does nothing and
+       the layout shifts when Cloudflare injects its iframe. */
+    #movieRequestTurnstile {
+        min-height: 65px;
+        border-radius: 6px;
+    }
 </style>
 <style>
     /* Mobile-safe: only prevent horizontal scroll, don't override desktop sizing */
@@ -1222,6 +1247,15 @@
     #heroCarousel,#heroCarousel .g-grid,#heroCarousel .g-stage,#heroCarousel .g-fan-wrap{min-width:0}
     @media(max-width:640px){
         html,body{max-width:100%!important;box-sizing:border-box}
+        /* Turnstile 'flexible' has a hard 300px minimum. Inside the modal's
+           nested padding only ~295px was available at 375px and ~280px at 360px,
+           which made the wrapper (overflow-y:auto) scroll sideways. Reclaim the
+           padding and hard-clamp the iframe so it can never bleed. */
+        #movieRequestModal .glass-strong{margin-left:0!important;margin-right:0!important}
+        #movieRequestModal form{padding-left:12px!important;padding-right:12px!important}
+        #movieRequestModal #movieRequestTurnstile,
+        #movieRequestModal #movieRequestTurnstile iframe{max-width:100%!important}
+    }
         *,*::before,*::after{box-sizing:border-box}
         img{max-width:100%}
         .max-w-container-max{box-sizing:border-box;min-width:0}
@@ -1251,6 +1285,114 @@
 <script>
 (function() {
     var hydrated = false;
+    var tsWidgetId = null;
+    var tsQueue = null;
+
+    // wp_localize_script prints at wp_footer(), i.e. AFTER this script, and
+    // script combining on this host can push it later still. Never dereference
+    // the global directly - a ReferenceError here would leave the submit button
+    // permanently disabled.
+    var RQ = window.morimoflixRequest || {
+        ajaxUrl: '', nonce: '',
+        tsSiteKey: '', tsEnabled: false,
+        tsSrc: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+    };
+
+    function tsEnableSubmit(on) {
+        var b = document.getElementById('movieRequestSubmit');
+        if (b) b.disabled = !on;
+    }
+
+    // Turnstile is loaded lazily on first modal open (~28KB brotli plus a
+    // Cloudflare 302), so the overwhelming majority of page views - which never
+    // open the modal - pay nothing. Dynamically inserted scripts are async by
+    // spec, so this can never block DCL/FCP/LCP.
+    function loadTurnstile(done, failed) {
+        if (window.turnstile) { done(); return; }
+        if (tsQueue) { tsQueue.push({ done: done, failed: failed }); return; }
+        tsQueue = [{ done: done, failed: failed }];
+
+        var flush = function () {
+            var q = tsQueue; tsQueue = null;
+            if (q) q.forEach(function (c) { c.done(); });
+        };
+        var abort = function () {
+            var q = tsQueue; tsQueue = null;
+            if (s) s.remove();
+            if (q) q.forEach(function (c) { if (c.failed) c.failed(); });
+        };
+
+        var s = document.createElement('script');
+        s.src = RQ.tsSrc;
+        s.async = true;
+        s.onload = flush;
+        s.onerror = abort;
+        // Watchdog: a stalled-but-not-blocked request (DNS blackhole, captive
+        // portal, throttling ad blocker) fires neither event. Without this the
+        // queue stays pending forever and the button never re-enables.
+        setTimeout(function () { if (tsQueue) abort(); }, 8000);
+        document.head.appendChild(s);
+    }
+
+    // Render the widget. MUST only run while the modal is visible: Turnstile
+    // measures its iframe at render time, so rendering into the display:none
+    // shell produces a zero-width widget that never recovers.
+    function renderTurnstile(shell) {
+        var tsEl = shell.querySelector('#movieRequestTurnstile');
+        if (!tsEl) return;
+
+        if (tsWidgetId !== null) {
+            // Already rendered. Just make sure a token is coming; if the widget
+            // errored earlier, reset() puts it back in a solvable state.
+            tsEnableSubmit(false);
+            resetTurnstile();
+            return;
+        }
+
+        loadTurnstile(function () {
+            if (!window.turnstile || !tsEl.isConnected) { tsEnableSubmit(true); return; }
+            try {
+                // Options are passed explicitly rather than relying on data-*
+                // attributes: under render=explicit those are documented for
+                // implicit mode, and a silently ignored sitekey throws.
+                tsWidgetId = turnstile.render(tsEl, {
+                    sitekey: RQ.tsSiteKey,
+                    theme: 'dark',
+                    size: 'flexible',
+                    appearance: 'interaction-only',
+                    // The token is issued asynchronously AFTER the widget shell
+                    // exists. Releasing the button on creation rather than on
+                    // this callback lets the user submit with no token yet.
+                    callback: function () { tsEnableSubmit(true); },
+                    'expired-callback': function () { tsEnableSubmit(false); resetTurnstile(); },
+                    'error-callback': function () {
+                        tsWidgetId = null;
+                        tsEnableSubmit(true);
+                        var m = document.getElementById('movieRequestMessage');
+                        if (m) {
+                            m.classList.remove('hidden');
+                            m.classList.add('text-red-400');
+                            m.textContent = 'Security check could not load. Please check your connection and try again.';
+                        }
+                    }
+                });
+            } catch (err) {
+                // A malformed sitekey throws synchronously here. Swallow it so a
+                // Turnstile misconfiguration can never take the whole modal down.
+                tsWidgetId = null;
+                tsEnableSubmit(true);
+            }
+        }, function () {
+            tsEnableSubmit(true);
+        });
+    }
+
+    // Guarded reset. Cloudflare's zero-arg reset() THROWS when no widget exists,
+    // which would otherwise mask the real server error with a generic message.
+    function resetTurnstile() {
+        if (!window.turnstile || tsWidgetId === null) return;
+        try { turnstile.reset(tsWidgetId); } catch (e) { /* no widget to reset */ }
+    }
 
     function closeRequestModal() {
         if (!hydrated) return;
@@ -1264,6 +1406,9 @@
         if (form) form.reset();
         var msg = document.getElementById('movieRequestMessage');
         if (msg) msg.classList.add('hidden');
+        // Tokens are single-use and expire after 300s, so a reopened
+        // modal must start with a fresh one or every submit fails.
+        resetTurnstile();
     }
 
     function openRequestModal() {
@@ -1279,6 +1424,8 @@
         var mo = document.getElementById('mobileMenuOverlay');
         if (mo) mo.classList.remove('active');
         requestAnimationFrame(function() {
+            // Now that the shell is visible, load + render the widget.
+            renderTurnstile(shell);
             var input = document.getElementById('request_movie_name');
             if (input) input.focus({ preventScroll: true });
         });
@@ -1291,10 +1438,18 @@
         var tpl = document.getElementById('movieRequestTemplate');
         if (!shell || !tpl || !tpl.content) return false;
         shell.appendChild(tpl.content.cloneNode(true));
-        hydrated = true;
+        // NOTE: hydrated is committed BEFORE the listeners are bound in the
+        // original code path. It must be set here, and the bindings must never
+        // be skippable - if anything below throws, the form silently falls back
+        // to a native GET navigation with no submit handler at all.
         document.getElementById('movieRequestClose').addEventListener('click', closeRequestModal);
         document.getElementById('movieRequestOverlay').addEventListener('click', closeRequestModal);
         bindRequestSubmit();
+        hydrated = true;
+
+        // Block submission until Turnstile has issued a token, so the user never
+        // fires a request that is guaranteed to 400.
+        if (RQ.tsEnabled) tsEnableSubmit(false);
         return true;
     }
 
@@ -1307,29 +1462,50 @@
 
             var submit = document.getElementById('movieRequestSubmit');
             var message = document.getElementById('movieRequestMessage');
+
+            // Pull the Turnstile token out of the hidden input Cloudflare injects.
+            // Scoped to the modal shell - a document-wide querySelector would
+            // break the moment a second widget is ever added.
+            var shellEl = document.getElementById('movieRequestModal');
+            var tsToken = '';
+            var tsEl = shellEl ? shellEl.querySelector('#movieRequestTurnstile') : null;
+            if (tsEl) {
+                var tsInput = tsEl.querySelector('input[name="cf-turnstile-response"]');
+                if (tsInput) tsToken = tsInput.value;
+            }
+
             var data = new URLSearchParams({
                 action: 'morimoflix_submit_movie_request',
-                nonce: morimoflixRequest.nonce,
+                nonce: RQ.nonce,
                 movie_name: document.getElementById('request_movie_name').value,
                 movie_year: document.getElementById('request_movie_year').value,
-                imdb_link: document.getElementById('request_imdb_link').value
+                imdb_link: document.getElementById('request_imdb_link').value,
+                cf_turnstile_response: tsToken
             });
 
             if (submit) { submit.disabled = true; submit.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">refresh</span> Submitting...'; }
-            fetch(morimoflixRequest.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: data })
+            var lastSuccess = false;
+            fetch(RQ.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: data })
                 .then(function(response) { return response.json(); })
                 .then(function(response) {
+                    lastSuccess = !!response.success;
                     if (message) {
                         message.classList.remove('hidden');
                         if (response.success) {
                             message.classList.remove('text-red-400');
                             message.classList.add('text-green-400');
                             message.textContent = response.data && response.data.message ? response.data.message : 'Request submitted.';
+                            resetTurnstile();
                             setTimeout(function() { closeRequestModal(); }, 2000);
                         } else {
                             message.classList.remove('text-green-400');
                             message.classList.add('text-red-400');
                             message.textContent = response.data && response.data.message ? response.data.message : 'Unable to submit.';
+                            // Token is spent either way - issue a fresh one so a
+                            // retry does not fail on an already-used challenge.
+                            // Runs AFTER the message so a throwing reset() can
+                            // never suppress the feedback the user needs.
+                            resetTurnstile();
                         }
                     }
                 })
@@ -1339,9 +1515,16 @@
                         message.classList.add('text-red-400');
                         message.textContent = 'An error occurred. Please try again.';
                     }
+                    resetTurnstile();
                 })
                 .finally(function() {
-                    if (submit) { submit.disabled = false; submit.innerHTML = '<span class="material-symbols-outlined text-sm" style="font-variation-settings: \'FILL\' 1;">send</span> Submit Request'; }
+                    // On success the modal closes in 2s; leaving the button live
+                    // invites a re-tap that hits the throttle and overwrites the
+                    // success message with a 429.
+                    if (submit) {
+                        submit.innerHTML = '<span class="material-symbols-outlined text-sm" style="font-variation-settings: \'FILL\' 1;">send</span> Submit Request';
+                        if (!lastSuccess) submit.disabled = false;
+                    }
                 });
         });
     }

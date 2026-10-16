@@ -15,6 +15,68 @@ define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
 /**
+ * Cloudflare Turnstile — configuration + helpers.
+ *
+ * Put these in wp-config.php (NOT in this file) so the secret never ships
+ * inside the theme zip. Grab both keys from the Cloudflare dashboard:
+ * Turnstile -> Add widget -> widget type "Managed".
+ *
+ *     define( 'MORIMOFLIX_TURNSTILE_SITE_KEY', '0x4AAAAAAA...' );
+ *     define( 'MORIMOFLIX_TURNSTILE_SECRET',   '0x4AAAAAAA...' );
+ *
+ * BOTH constants must be set. Partial config is treated as "Turnstile off"
+ * so the form degrades to its previous behaviour instead of rendering a
+ * challenge whose token is never verified (see morimoflix_turnstile_notice).
+ */
+function morimoflix_turnstile_site_key() {
+    if ( ! defined( 'MORIMOFLIX_TURNSTILE_SITE_KEY' ) ) {
+        return '';
+    }
+    return is_string( MORIMOFLIX_TURNSTILE_SITE_KEY ) ? trim( MORIMOFLIX_TURNSTILE_SITE_KEY ) : '';
+}
+
+function morimoflix_turnstile_secret() {
+    if ( ! defined( 'MORIMOFLIX_TURNSTILE_SECRET' ) ) {
+        return '';
+    }
+    return is_string( MORIMOFLIX_TURNSTILE_SECRET ) ? trim( MORIMOFLIX_TURNSTILE_SECRET ) : '';
+}
+
+/**
+ * Single source of truth. Every consumer (localize, render, verify, notice)
+ * keys off this, so a half-configured install can never show a widget that
+ * is not actually verified — the silent security hole found in review.
+ */
+function morimoflix_turnstile_enabled() {
+    return morimoflix_turnstile_site_key() !== '' && morimoflix_turnstile_secret() !== '';
+}
+
+/**
+ * Warn admins when exactly one constant is defined. Without this, the
+ * site-key-only state ships a decorative CAPTCHA and the secret-only state
+ * bricks the form for every visitor with no visible cause.
+ */
+function morimoflix_turnstile_notice() {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $site = morimoflix_turnstile_site_key();
+    $sec  = morimoflix_turnstile_secret();
+
+    if ( ( '' === $site ) === ( '' === $sec ) ) {
+        return; // both set, or both absent
+    }
+
+    $missing = ( '' === $site ) ? 'MORIMOFLIX_TURNSTILE_SITE_KEY' : 'MORIMOFLIX_TURNSTILE_SECRET';
+
+    echo '<div class="notice notice-error"><p><strong>Morimoflix: Cloudflare Turnstile is half-configured.</strong> '
+        . esc_html( $missing )
+        . ' is missing from wp-config.php. The request form is currently behaving as if Turnstile were disabled — '
+        . 'define both constants, or remove both, so the two states cannot diverge.</p></div>';
+}
+add_action( 'admin_notices', 'morimoflix_turnstile_notice' );
+
+/**
  * TGM Plugin Activation — bundled plugins (TGMovies SEO + Rank Math prompt).
  * NOTE: Intentional exception to the flat-structure rule — required by the
  * TGMovies SEO theme-bundling spec (PROMPT-build-tgmovies-seo-plugin.md §5).
@@ -1041,15 +1103,31 @@ add_action( 'admin_init', 'morimoflix_check_requests_table' );
 function morimoflix_submit_movie_request() {
     check_ajax_referer( 'morimoflix-request-nonce', 'nonce' );
 
-    $movie_name = isset( $_POST['movie_name'] ) ? sanitize_text_field( $_POST['movie_name'] ) : '';
-    $movie_year = isset( $_POST['movie_year'] ) ? sanitize_text_field( $_POST['movie_year'] ) : '';
-    $imdb_link  = isset( $_POST['imdb_link'] ) ? esc_url_raw( $_POST['imdb_link'] ) : '';
+    // Client IP. Behind Cloudflare REMOTE_ADDR is the edge node, so prefer the
+    // CF header. This only feeds the secondary throttle (Turnstile is the real
+    // gate), so a spoofed value weakens the throttle but not the CAPTCHA.
+    $user_ip = '';
+    if ( ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+        $cf_ip = filter_var( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ), FILTER_VALIDATE_IP );
+        if ( $cf_ip ) {
+            $user_ip = $cf_ip;
+        }
+    }
+    if ( '' === $user_ip && ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
+        $user_ip = sanitize_text_field( substr( wp_unslash( $_SERVER['REMOTE_ADDR'] ), 0, 45 ) );
+    }
+
+    // 1) Cheap validation first, so a typo costs nothing.
+    $movie_name = isset( $_POST['movie_name'] ) ? sanitize_text_field( wp_unslash( $_POST['movie_name'] ) ) : '';
+    $movie_year = isset( $_POST['movie_year'] ) ? sanitize_text_field( wp_unslash( $_POST['movie_year'] ) ) : '';
+    $imdb_link  = isset( $_POST['imdb_link'] ) ? esc_url_raw( wp_unslash( $_POST['imdb_link'] ) ) : '';
 
     if ( function_exists( 'mb_substr' ) ) {
         $movie_name = mb_substr( $movie_name, 0, 200 );
     } else {
         $movie_name = substr( $movie_name, 0, 200 );
     }
+    $imdb_link = substr( $imdb_link, 0, 500 );
 
     if ( empty( $movie_name ) || empty( $movie_year ) ) {
         wp_send_json_error( array( 'message' => 'Movie name and year are required.' ) );
@@ -1059,14 +1137,69 @@ function morimoflix_submit_movie_request() {
         wp_send_json_error( array( 'message' => 'Please enter a valid 4-digit year.' ) );
     }
 
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'movie_requests';
-    $user_ip = sanitize_text_field( substr( $_SERVER['REMOTE_ADDR'] ?? '', 0, 45 ) );
-
+    // 2) Throttle CHECK before the outbound call. Previously this sat after
+    //    siteverify, which let one IP force unlimited Cloudflare requests and
+    //    eventually trip Cloudflare's own rate limit into a site-wide 503.
     $throttle_key = 'mfr_req_' . md5( $user_ip );
     if ( get_transient( $throttle_key ) ) {
-        wp_send_json_error( array( 'message' => 'Please wait a minute before submitting another request.' ), 429 );
+        wp_send_json_error( array( 'message' => 'Please wait a moment before submitting another request.' ), 429 );
     }
+
+    // 3) Turnstile verification (server-side; the client token alone is worthless).
+    if ( morimoflix_turnstile_enabled() ) {
+        $ts_token = isset( $_POST['cf_turnstile_response'] ) ? sanitize_text_field( wp_unslash( $_POST['cf_turnstile_response'] ) ) : '';
+
+        if ( '' === $ts_token ) {
+            set_transient( $throttle_key, 1, 15 );
+            wp_send_json_error( array( 'message' => 'Security check did not complete. Please tap Submit Request again.' ), 400 );
+        }
+
+        $ts_body = array(
+            'secret'   => morimoflix_turnstile_secret(),
+            'response' => $ts_token,
+        );
+        if ( '' !== $user_ip ) {
+            $ts_body['remoteip'] = $user_ip;
+        }
+
+        $ts_verify = wp_remote_post( 'https://challenges.cloudflare.com/turnstile/v0/siteverify', array(
+            // 3s, not 8: siteverify p99 is well under 2s, and every held PHP
+            // worker is a worker the whole site cannot use.
+            'timeout'             => 3,
+            'limit_response_size' => 16384,
+            'body'                => $ts_body,
+        ) );
+
+        if ( is_wp_error( $ts_verify ) || 200 !== (int) wp_remote_retrieve_response_code( $ts_verify ) ) {
+            set_transient( $throttle_key, 1, 15 );
+            wp_send_json_error( array( 'message' => 'Security check unavailable. Please try again.' ), 503 );
+        }
+
+        $ts_result = json_decode( wp_remote_retrieve_body( $ts_verify ), true );
+
+        // isset() too: reading a missing key on PHP 8 emits a warning, and with
+        // WP_DEBUG_DISPLAY that warning precedes the JSON and breaks the client.
+        if ( ! is_array( $ts_result ) || ! isset( $ts_result['success'] ) || true !== $ts_result['success'] ) {
+            set_transient( $throttle_key, 1, 15 );
+            wp_send_json_error( array( 'message' => 'Security check failed. Please try again.' ), 403 );
+        }
+
+        // Bind the token to this host: a token minted for another hostname in
+        // the same widget configuration would otherwise be accepted here.
+        $ts_host = wp_parse_url( home_url(), PHP_URL_HOST );
+        if ( ! empty( $ts_result['hostname'] ) && $ts_host && $ts_result['hostname'] !== $ts_host ) {
+            set_transient( $throttle_key, 1, 15 );
+            wp_send_json_error( array( 'message' => 'Security check failed. Please try again.' ), 403 );
+        }
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'movie_requests';
+
+    // Armed only once the request has genuinely succeeded. Failure paths use a
+    // short 15s penalty above, so a CAPTCHA flake costs 15s rather than the
+    // full minute - and a bot is still rate-limited to one attempt per 15s.
+    set_transient( $throttle_key, 1, 60 );
 
     $result = $wpdb->insert(
         $table_name,
@@ -1082,7 +1215,6 @@ function morimoflix_submit_movie_request() {
     );
 
     if ( $result ) {
-        set_transient( $throttle_key, 1, 60 );
         wp_send_json_success( array( 'message' => 'Movie request submitted successfully!' ) );
     } else {
         wp_send_json_error( array( 'message' => 'Failed to submit request. Please try again.' ) );
@@ -1435,6 +1567,13 @@ function morimoflix_localize_request_script() {
     wp_localize_script( 'morimoflix-main', 'morimoflixRequest', array(
         'ajaxUrl' => admin_url( 'admin-ajax.php' ),
         'nonce'   => wp_create_nonce( 'morimoflix-request-nonce' ),
+        // Empty string when Turnstile is off or half-configured; the client
+        // then skips the widget entirely instead of rendering a dead one.
+        'tsSiteKey' => morimoflix_turnstile_site_key(),
+        'tsEnabled' => morimoflix_turnstile_enabled(),
+        // render=explicit stops Cloudflare auto-scanning the DOM for
+        // .cf-turnstile, which we do not want while the modal is inert.
+        'tsSrc'     => 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
     ) );
 }
 add_action( 'wp_enqueue_scripts', 'morimoflix_localize_request_script' );
