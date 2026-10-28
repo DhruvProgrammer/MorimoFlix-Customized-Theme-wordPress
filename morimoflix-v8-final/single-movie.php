@@ -43,7 +43,7 @@ html,body{overflow-x:hidden!important;max-width:100%;}
 .mf-detail img{max-width:100%;}
 .mf-hero,.mf-hero-inner,.mf-body,.mf-card,.mf-rel-grid,.mf-meta{box-sizing:border-box;max-width:100%;}
 /* ---------- HERO ---------- */
-.mf-hero{position:relative;overflow:hidden;background:#0B0B0F;isolation:isolate;width:100%;max-width:100vw;box-sizing:border-box;}
+.mf-hero{position:relative;overflow-x:hidden;overflow-y:visible;background:#0B0B0F;isolation:isolate;width:100%;max-width:100vw;box-sizing:border-box;}
 .mf-hero-bg{position:absolute;inset:0;z-index:0;overflow:hidden;max-width:100%;}
 .mf-hero-bg img{width:100%;height:100%;object-fit:cover;object-position:center 22%;opacity:.82;display:block;max-width:100%;}
 /* Layer 1: dark LEFT gradient for readability */
@@ -254,8 +254,22 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
     .mf-meta{gap:6px;}
 }
 @media (prefers-reduced-motion: reduce) {
-    .mf-btn,.mf-meta-item,.mf-rel-img,.mf-browse,.mf-cast a{transition:none;}
+    .mf-btn,.mf-meta-item,.mf-rel-img,.mf-browse,.mf-cast a,.mf-syn-toggle,.mf-syn-chev{transition:none;}
+    .mf-syn-extra{animation:none;}
 }
+/* ---------- Synopsis show-more (reference: hentaidekho.mom) ---------- */
+.mf-synopsis{position:relative;}
+.mf-syn-short{margin:0;max-width:38rem;}
+.mf-syn-extra{display:none;margin-top:1rem;padding-top:1rem;border-top:1px dashed rgba(255,255,255,0.12);}
+.mf-syn-open .mf-syn-extra{display:block;animation:mf-syn-fade .4s ease;}
+@keyframes mf-syn-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.mf-syn-extra img{max-width:100%;height:auto;border-radius:12px;border:1px solid rgba(255,255,255,0.1);margin:0.5rem 0 1rem;display:block;}
+.mf-syn-extra p{margin:0 0 1rem;line-height:1.7;color:#B9B3B4;}
+.mf-syn-extra h2,.mf-syn-extra h3{color:#fff;margin:1.2rem 0 0.5rem;font-size:1.1rem;}
+.mf-syn-toggle{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:1rem;padding:0.62rem 1rem;min-height:44px;box-sizing:border-box;background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.25);border-radius:50px;color:#E50914;font-family:inherit;font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;transition:background .3s ease,border-color .3s ease;}
+.mf-syn-toggle:hover{background:rgba(229,9,20,0.16);border-color:#E50914;}
+.mf-syn-toggle .mf-syn-chev{display:inline-block;transition:transform .3s ease;}
+.mf-syn-open .mf-syn-toggle .mf-syn-chev{transform:rotate(180deg);}
 </style>
 
 <main class="mf-detail">
@@ -304,8 +318,25 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
             $mf_excerpt = has_excerpt() ? get_the_excerpt() : '';
             if ( '' !== $mf_excerpt && ! morimoflix_texts_are_duplicate( $mf_excerpt, $meta['tagline'] ) ) :
             ?>
-            <p class="mf-desc"><?php echo esc_html( $mf_excerpt ); ?></p>
+            <div class="mf-synopsis" id="mfSynopsis">
+                <p class="mf-desc mf-syn-short"><?php echo esc_html( $mf_excerpt ); ?></p>
+                <div class="mf-syn-extra" id="mf-syn-extra">
+                    <?php if ( ! empty( $backdrop ) ) : ?>
+                    <img src="<?php echo esc_url( $backdrop ); ?>" alt="<?php echo esc_attr( get_the_title() . ' ' . $meta['year'] . ' movie' ); ?>" width="1280" height="720" loading="lazy" decoding="async" style="aspect-ratio:16/9;" />
+                    <?php endif; ?>
+                    <div class="mf-prose">
+                        <?php the_content(); ?>
+                        <?php echo morimoflix_movie_thin_content( get_the_ID() ); ?>
+                    </div>
+                </div>
+                <button type="button" class="mf-syn-toggle" onclick="morimoflixSynToggle(this)" aria-expanded="false" aria-controls="mf-syn-extra">
+                    <span class="mf-syn-toggle-label">Show More</span>
+                    <span class="mf-syn-chev" aria-hidden="true">&#8964;</span>
+                </button>
+            </div>
             <?php endif; ?>
+
+            <noscript><style>.mf-syn-extra{display:block!important;}.mf-syn-toggle{display:none!important;}</style></noscript>
 
             <div class="mf-meta">
                 <div class="mf-meta-item">
@@ -361,8 +392,10 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
                     <?php esc_html_e( 'About', 'morimoflix-flicker' ); ?> <?php the_title(); ?> <span class="accent">(<?php echo esc_html( $meta['year'] ); ?>)</span>
                 </h2>
                 <div class="mf-prose">
-                    <?php the_content(); ?>
-                    <?php echo morimoflix_movie_thin_content( get_the_ID() ); ?>
+                    <?php if ( '' === $mf_excerpt || morimoflix_texts_are_duplicate( $mf_excerpt, $meta['tagline'] ) ) : ?>
+                        <?php the_content(); ?>
+                        <?php echo morimoflix_movie_thin_content( get_the_ID() ); ?>
+                    <?php endif; ?>
                 </div>
                 <?php if ( ! empty( $meta['posted_by'] ) || get_the_modified_date() ) : ?>
                 <p class="mf-byline">
@@ -530,6 +563,18 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
     </div>
 </main>
 
+<script>
+function morimoflixSynToggle(btn) {
+    var box = btn.closest('.mf-synopsis');
+    if (!box) return;
+    var open = box.classList.toggle('mf-syn-open');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var label = btn.querySelector('.mf-syn-toggle-label');
+    if (label) {
+        label.textContent = open ? 'Show Less' : 'Show More';
+    }
+}
+</script>
 <?php
     endwhile;
 endif;

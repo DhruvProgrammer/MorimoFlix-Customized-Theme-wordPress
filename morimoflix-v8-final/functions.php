@@ -1800,7 +1800,8 @@ function morimoflix_sanitize_seo_text( $text ) {
 /**
  * SEO: Unique <title> / og:title pattern for a movie/TV post.
  *
- * "{Title} ({Year}) — Watch {Genre} in {Quality} {Language} | FlixGarden".
+ * "{Title} ({Year}) - Best {Genre} Movie in {Quality} {Language} | FlixGarden".
+ * Includes "Best" (sentiment) and "Free" (power word) for Rank Math.
  * Genre and language segments are omitted when unavailable.
  *
  * @param int|null $post_id Post ID. Defaults to current post.
@@ -1811,26 +1812,26 @@ function morimoflix_movie_seo_title( $post_id = null ) {
         $post_id = get_the_ID();
     }
     $m = morimoflix_get_movie_meta( $post_id );
-    $year = trim( (string) $m['year'] );
+    $year = sanitize_text_field( trim( (string) $m['year'] ) );
     $genre_name = '';
     $g = get_the_terms( $post_id, 'genre' );
     if ( $g && ! is_wp_error( $g ) && isset( $g[0] ) ) {
-        $genre_name = $g[0]->name;
+        $genre_name = sanitize_text_field( $g[0]->name );
     }
     $lang = $m['language'] ? trim( explode( ',', $m['language'] )[0] ) : '';
-    $tail = trim( $m['quality'] . ( $lang ? ' ' . $lang : '' ) );
-    $title = get_the_title( $post_id );
+    $tail = trim( sanitize_text_field( $m['quality'] ) . ( $lang ? ' ' . sanitize_text_field( $lang ) : '' ) );
+    $title = sanitize_text_field( get_the_title( $post_id ) );
     $candidates = array();
     if ( '' !== $genre_name && '' !== $year ) {
-        $candidates[] = sprintf( __( '%1$s (%2$s) — Watch %3$s in %4$s | FlixGarden', 'morimoflix-flicker' ), $title, $year, $genre_name, $tail );
+        $candidates[] = sprintf( __( '%1$s (%2$s) — Best %3$s Movie in %4$s | FlixGarden', 'morimoflix-flicker' ), $title, $year, $genre_name, $tail );
     }
     if ( '' !== $year ) {
-        $candidates[] = sprintf( __( '%1$s (%2$s) — Watch Movie in %3$s | FlixGarden', 'morimoflix-flicker' ), $title, $year, $tail );
+        $candidates[] = sprintf( __( '%1$s (%2$s) — Best Free Movie in %3$s | FlixGarden', 'morimoflix-flicker' ), $title, $year, $tail );
     }
     if ( '' !== $genre_name ) {
-        $candidates[] = sprintf( __( '%1$s — Watch %2$s in %3$s | FlixGarden', 'morimoflix-flicker' ), $title, $genre_name, $tail );
+        $candidates[] = sprintf( __( '%1$s — Best %2$s in %3$s | FlixGarden', 'morimoflix-flicker' ), $title, $genre_name, $tail );
     }
-    $candidates[] = sprintf( __( '%1$s — Watch Movie in %2$s | FlixGarden', 'morimoflix-flicker' ), $title, $tail );
+    $candidates[] = sprintf( __( '%1$s — Best Free Movie in %2$s | FlixGarden', 'morimoflix-flicker' ), $title, $tail );
 
     foreach ( $candidates as $candidate ) {
         $candidate = morimoflix_sanitize_seo_text( $candidate );
@@ -1919,9 +1920,10 @@ function morimoflix_movie_thin_content( $post_id ) {
     $genres = get_the_terms( $post_id, 'genre' );
     $genre = $genres && ! is_wp_error( $genres ) && isset( $genres[0] ) ? $genres[0]->name : 'movie';
     $title = get_the_title( $post_id );
-    $first = sprintf( 'Looking for south movie hindi dubbed & Telugu movies like %s (%s)? Find new south movie hindi dubbed 2025-2026, Hindi dubbed movies & cool movies in HD on FlixGarden. %s is a %s title presented in %s with IMDb %s — browse the %s collection or search the A–Z Library for any actor or year.', $title, $m['year'], $title, $genre, $m['quality'], $m['rating'], $genre );
-    $second = sprintf( 'On FlixGarden every %s south movie hindi dubbed page shows Telugu movies list, Hindi dubbed movies full HD and new south movies details before download. If you liked %s, also check similar %s titles, new Telugu movies 2025 and the full A–Z Library — request any missing %s release via Telegram and we add Hindi dubbed and Telugu versions daily.', $genre, $title, $genre, $genre );
-    return '<p>' . esc_html( $first ) . '</p><p>' . esc_html( $second ) . '</p>';
+    $first = sprintf( 'Looking for movies like %s (%s)? Browse the full collection of HD titles on FlixGarden. %s is a %s title presented in %s with IMDb %s rating and %s runtime. Explore more from the %s collection or search the A-Z Library for any actor or year.', $title, $m['year'], $title, $genre, $m['quality'], $m['rating'], $m['duration'], $genre );
+    $second = sprintf( 'On FlixGarden, every movie page shows full HD details, cast information, and quality options before you download. If you enjoyed %s, also check similar %s titles and new releases. Request any missing release via Telegram and we add new versions daily.', $title, $genre );
+    $third = 'FlixGarden offers a vast library of Telugu, Hindi, and English movies in multiple qualities. Browse by genre, actor, or year to find your next favorite. All titles are available with fast download links and streaming options.';
+    return '<p>' . esc_html( $first ) . '</p><p>' . esc_html( $second ) . '</p><p>' . esc_html( $third ) . '</p>';
 }
 
 /**
