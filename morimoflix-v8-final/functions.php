@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.2' );
+define( 'MORIMOFLIX_VERSION', '5.6.3' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -3464,24 +3464,40 @@ function morimoflix_seo_build_content( $post_id ) {
     $blocks[] = $p( 'For movie hindi - <a href="' . esc_url( home_url( '/' ) ) . '">flixgarden.site</a>' );
     $blocks[] = morimoflix_seo_block( 'separator', '', '<hr class="wp-block-separator has-alpha-channel-opacity" />' );
 
-    // Images - collect up to 4 unique image URLs (assets credit, RM:test contentHasAssets).
+    // Images - UNIQUE artwork only (assets credit, RM:test contentHasAssets).
+    // The poster/OG variants are the SAME file at different sizes (-400x600,
+    // -800x1200, full): stack them and the article shows duplicated figures
+    // (the "two images" bug). Dedupe by file stem, keep the lean poster crop
+    // and the real TMDB backdrop.
     $img_urls = array();
+    $seen_stems = array();
+    $img_stem = function ( $u ) {
+        $file = substr( $u, (int) strrpos( $u, '/' ) + 1 );
+        $file = preg_replace( '/\.[a-z0-9]{2,5}$/i', '', $file ); // strip extension
+        return strtolower( preg_replace( '/-\d+x\d+$/', '', $file ) );
+    };
+    $add_image = function ( $u ) use ( &$img_urls, &$seen_stems, $img_stem ) {
+        if ( ! $u || ! is_string( $u ) ) {
+            return;
+        }
+        $stem = $img_stem( $u );
+        if ( in_array( $stem, $seen_stems, true ) ) {
+            return;
+        }
+        $seen_stems[] = $stem;
+        $img_urls[]   = $u;
+    };
     $thumb = get_the_post_thumbnail_url( $post_id, 'morimoflix-poster' );
-    if ( $thumb ) {
-        $img_urls[] = $thumb;
-    }
-    $thumb_large = get_the_post_thumbnail_url( $post_id, 'morimoflix-poster-large' );
-    if ( $thumb_large ) {
-        $img_urls[] = $thumb_large;
-    }
-    if ( ! empty( $og['url'] ) ) {
-        $img_urls[] = $og['url'];
-    }
+    $add_image( $thumb );
     $backdrop_img = morimoflix_get_backdrop( $post_id );
     if ( $backdrop_img ) {
-        $img_urls[] = $backdrop_img;
+        // hero variant is t/p/original/ — embed the lean w1280 CDN crop instead
+        $backdrop_img = preg_replace( '#/t/p/\w+/#', '/t/p/w1280/', $backdrop_img );
     }
-    $img_urls = array_values( array_unique( array_filter( $img_urls ) ) );
+    $add_image( $backdrop_img );
+    if ( ! empty( $og['url'] ) ) {
+        $add_image( $og['url'] ); // skipped when it is the poster file at another size
+    }
     $poster_alt = morimoflix_poster_alt( $post_id );
     foreach ( array_slice( $img_urls, 0, 4 ) as $img_url ) {
         $blocks[] = morimoflix_seo_block(
