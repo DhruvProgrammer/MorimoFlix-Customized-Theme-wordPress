@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.1' );
+define( 'MORIMOFLIX_VERSION', '5.6.2' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -2839,24 +2839,32 @@ function morimoflix_rankmath_analysis_data( $post_id ) {
         '<a href="' . esc_url( 'https://www.rottentomatoes.com/search?search=' . $query ) . '">Rotten Tomatoes</a>',
         '<a href="' . esc_url( 'https://www.youtube.com/results?search_query=' . rawurlencode( trim( $title . ' ' . $m['year'] . ' trailer' ) ) ) . '">YouTube Trailer</a>',
     );
-    $rendered = '<h2>' . esc_html( $title . ' (' . $m['year'] . ')' ) . '</h2>';
+    // Rank Math splits paragraphs on double newlines: every rendered chunk
+    // gets its own "\n\n" boundary, otherwise the whole extras blob (h2 +
+    // synopsis + facts + image + links) merges into ONE >120-word
+    // "paragraph" and fails the editor's short-paragraph check.
+    $rendered = '<h2>' . esc_html( $title . ' (' . $m['year'] . ')' ) . '</h2>' . "\n\n";
     if ( $synopsis ) {
-        $rendered .= '<p>' . esc_html( $synopsis ) . '</p>';
+        $rendered .= '<p>' . esc_html( $synopsis ) . '</p>' . "\n\n";
     }
-    $rendered .= '<ul>' . wp_kses_post( '<li>' . implode( '</li><li>', $facts ) . '</li>' ) . '</ul>';
+    $rendered .= '<ul>' . wp_kses_post( '<li>' . implode( '</li><li>', $facts ) . '</li>' ) . '</ul>' . "\n\n";
     if ( has_post_thumbnail( $post_id ) ) {
         $image_url = get_the_post_thumbnail_url( $post_id, 'medium' );
         if ( $image_url ) {
-            $rendered .= '<img src="' . esc_url( $image_url ) . '" alt="' . esc_attr( morimoflix_poster_alt( $post_id ) ) . '">';
+            $rendered .= '<img src="' . esc_url( $image_url ) . '" alt="' . esc_attr( morimoflix_poster_alt( $post_id ) ) . '">' . "\n\n";
         }
     }
-    $rendered .= '<p><a href="' . esc_url( home_url( '/list/' ) ) . '">' . esc_html__( 'A-Z movie library', 'morimoflix-flicker' ) . '</a></p>';
-    $rendered .= '<p>' . implode( ' ', $external_links ) . '</p>';
-    $rendered .= morimoflix_movie_thin_content( $post_id );
+    $rendered .= '<p><a href="' . esc_url( home_url( '/list/' ) ) . '">' . esc_html__( 'A-Z movie library', 'morimoflix-flicker' ) . '</a></p>' . "\n\n";
+    $rendered .= '<p>' . implode( ' ', $external_links ) . '</p>' . "\n\n";
+    $thin = morimoflix_movie_thin_content( $post_id );
+    if ( $thin ) {
+        $rendered .= $thin . "\n\n";
+    }
     $tg_block = get_post_meta( $post_id, '_tg_autoseo_block', true );
     if ( $tg_block ) {
-        $rendered .= wp_kses_post( $tg_block );
+        $rendered .= wp_kses_post( $tg_block ) . "\n\n";
     }
+    $rendered = trim( $rendered );
     $rank_title = trim( (string) get_post_meta( $post_id, 'rank_math_title', true ) );
     if ( '' === $rank_title ) {
         $rank_title = morimoflix_movie_seo_title( $post_id );
@@ -2898,7 +2906,10 @@ function morimoflix_enqueue_rankmath_analysis() {
     }
     if (data.content) {
         wp.hooks.addFilter('rank_math_content', 'morimoflix/theme', function (content) {
-            return (content || '') + data.content;
+            // Double-newline seam: Rank Math splits paragraphs on "\n\n"; a
+            // bare concat merges the article's last paragraph with the
+            // extras blob into one over-long "paragraph".
+            return (content || '') + '\n\n' + data.content;
         }, 11);
     }
     var refresh = function () {
