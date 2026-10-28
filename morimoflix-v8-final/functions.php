@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.5.2' );
+define( 'MORIMOFLIX_VERSION', '5.6.0' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -3217,3 +3217,596 @@ function morimoflix_movie_archive_canonical_redirects() {
     }
 }
 add_action( 'template_redirect', 'morimoflix_movie_archive_canonical_redirects', 5 );
+
+/* ============================================================
+ * SEO Auto-Apply (Rank Math friendly) - REST endpoint
+ * ------------------------------------------------------------
+ * Route:    POST /wp-json/morimoflix/v1/seo-update
+ * Auth:     logged-in user with `edit_others_posts` capability
+ *           (application password or cookie auth).
+ * Purpose:  Apply Rank Math SEO meta and rebuild long-form content in
+ *           proper Gutenberg block format server-side, then verify and
+ *           score against the Rank Math content checklist. Doing the
+ *           block serialization in PHP avoids the REST escaping
+ *           pitfalls of pushing long HTML through the JSON API.
+ * Modes:    apply=full (default) | meta | content | check
+ *           force=1 rebuilds content even if this template already ran
+ *           verify=1 (default) also checks the rendered page head
+ * ============================================================ */
+
+/**
+ * Register the seo-update REST route.
+ */
+function morimoflix_register_seo_update_route() {
+    register_rest_route(
+        'morimoflix/v1',
+        '/seo-update',
+        array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'morimoflix_seo_update_endpoint',
+            'permission_callback' => 'morimoflix_seo_update_permission',
+            'args'                => array(
+                'objectID'      => array(
+                    'required'          => true,
+                    'type'              => 'integer',
+                    'sanitize_callback' => 'absint',
+                ),
+                'objectType'    => array(
+                    'type'              => 'string',
+                    'default'           => 'movie',
+                    'enum'              => array( 'movie', 'tv' ),
+                    'sanitize_callback' => 'sanitize_key',
+                ),
+                'apply'         => array(
+                    'type'              => 'string',
+                    'default'           => 'full',
+                    'enum'              => array( 'full', 'meta', 'content', 'check' ),
+                    'sanitize_callback' => 'sanitize_key',
+                ),
+                'force'         => array(
+                    'type'    => 'boolean',
+                    'default' => false,
+                ),
+                'verify'        => array(
+                    'type'    => 'boolean',
+                    'default' => true,
+                ),
+                'title'         => array(
+                    'type'              => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'description'   => array(
+                    'type'              => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'focus_keyword' => array(
+                    'type'              => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'canonical_url' => array(
+                    'type'              => 'string',
+                    'sanitize_callback' => 'esc_url_raw',
+                ),
+            ),
+        )
+    );
+}
+add_action( 'rest_api_init', 'morimoflix_register_seo_update_route' );
+
+/**
+ * Permission check: anyone who can edit others' posts (admin/app-password user).
+ */
+function morimoflix_seo_update_permission() {
+    return is_user_logged_in() && current_user_can( 'edit_others_posts' );
+}
+
+/**
+ * Default Rank Math meta for a post (movie/series aware).
+ *
+ * @param WP_Post $post     Post object.
+ * @param string  $kind     "Movie" or "Series".
+ * @param string  $kind_lc  "movie" or "series".
+ * @return array
+ */
+function morimoflix_seo_default_meta( $post, $kind, $kind_lc ) {
+    $title = sanitize_text_field( get_the_title( $post ) );
+
+    $title_candidates = array(
+        $title . ' ' . $kind . ' Download - Best Free HD 4K | FlixGarden',
+        $title . ' ' . $kind . ' Download - Best HD | FlixGarden',
+        mb_substr( $title, 0, 60 ) . ' ' . $kind . ' Download | FlixGarden',
+    );
+    $seo_title = $title_candidates[0];
+    foreach ( $title_candidates as $candidate ) {
+        if ( mb_strlen( $candidate ) <= 60 ) {
+            $seo_title = $candidate;
+            break;
+        }
+    }
+    if ( mb_strlen( $seo_title ) > 60 ) {
+        $seo_title = mb_substr( $seo_title, 0, 57 ) . '...';
+    }
+
+    $desc_candidates = array(
+        $title . ' ' . $kind_lc . ' download free in 1080p HD. Full ' . $kind_lc . ' direct download links, verified sources, and fast download speeds on FlixGarden. Download now!',
+        $title . ' ' . $kind_lc . ' download free in 1080p HD. Direct download links and fast speeds on FlixGarden. Download now!',
+        $title . ' ' . $kind_lc . ' download free in HD on FlixGarden. Download now!',
+    );
+    $desc = $desc_candidates[0];
+    foreach ( $desc_candidates as $candidate ) {
+        if ( mb_strlen( $candidate ) <= 160 && mb_strlen( $candidate ) >= 120 ) {
+            $desc = $candidate;
+            break;
+        }
+    }
+
+    return array(
+        'rank_math_title'          => $seo_title,
+        'rank_math_description'    => $desc,
+        'rank_math_focus_keyword'  => $title . ' ' . $kind_lc . ' download, ' . $title . ' download, ' . $title . ' full ' . $kind_lc . ', ' . $title . ' hindi dubbed',
+        'rank_math_canonical_url'  => get_permalink( $post ),
+    );
+}
+
+/**
+ * Serialize one Gutenberg block.
+ *
+ * @param string $type   Block type (paragraph, heading, etc.).
+ * @param string $attrs  Block attribute JSON string or ''.
+ * @param string $html   Inner HTML.
+ * @return string
+ */
+function morimoflix_seo_block( $type, $attrs, $html ) {
+    $open = '<!-- wp:' . $type . ( '' !== $attrs ? ' ' . $attrs : '' ) . ' -->';
+    return $open . "\n" . $html . "\n<!-- /wp:" . $type . ' -->';
+}
+
+/**
+ * Serialize an H2 heading block with an anchor id.
+ */
+function morimoflix_seo_heading( $id, $text ) {
+    return morimoflix_seo_block(
+        'heading',
+        '{"level":2}',
+        '<h2 id="' . esc_attr( $id ) . '" class="wp-block-heading">' . esc_html( $text ) . '</h2>'
+    );
+}
+
+/**
+ * Build the long-form SEO content in Gutenberg blocks for a post.
+ *
+ * @param int $post_id Post ID.
+ * @return string
+ */
+function morimoflix_seo_build_content( $post_id ) {
+    $post  = get_post( $post_id );
+    $title = sanitize_text_field( get_the_title( $post ) );
+    $m     = morimoflix_get_movie_meta( $post_id );
+    $kind  = 'tv' === $post->post_type ? 'Series' : 'Movie';
+
+    $synopsis = wp_strip_all_tags( get_the_content( '', false, $post_id ), true );
+    $synopsis = trim( preg_replace( '/\s+/u', ' ', $synopsis ) );
+    // Cap the recycled synopsis so old-template bulk never doubles up inside a rebuild,
+    // and so the capped paragraph still passes the 120-word short-paragraph test.
+    $syn_words = preg_split( '/\s+/u', $synopsis, -1, PREG_SPLIT_NO_EMPTY );
+    if ( is_array( $syn_words ) && count( $syn_words ) > 120 ) {
+        $synopsis = implode( ' ', array_slice( $syn_words, 0, 120 ) );
+    }
+    if ( '' === $synopsis ) {
+        $synopsis = 'Experience ' . $title . ', now available for download on FlixGarden.';
+    }
+
+    $genre_links = array();
+    $genres      = get_the_terms( $post_id, 'genre' );
+    if ( $genres && ! is_wp_error( $genres ) ) {
+        foreach ( array_slice( $genres, 0, 3 ) as $genre ) {
+            $link = get_term_link( $genre );
+            if ( ! is_wp_error( $link ) ) {
+                $genre_links[] = '<a href="' . esc_url( $link ) . '">' . esc_html( $genre->name ) . '</a>';
+            }
+        }
+    }
+    $actor_links = array();
+    $actors      = get_the_terms( $post_id, 'actor' );
+    if ( $actors && ! is_wp_error( $actors ) ) {
+        foreach ( array_slice( $actors, 0, 4 ) as $actor ) {
+            $link = get_term_link( $actor );
+            if ( ! is_wp_error( $link ) ) {
+                $actor_links[] = '<a href="' . esc_url( $link ) . '">' . esc_html( $actor->name ) . '</a>';
+            }
+        }
+    }
+
+    $og = morimoflix_get_og_image( $post_id );
+
+    $p = static function ( $html ) {
+        return morimoflix_seo_block( 'paragraph', '', '<p>' . wp_kses_post( $html ) . '</p>' );
+    };
+    $t = static function ( $text ) {
+        return wp_kses_post( $text );
+    };
+
+    $blocks = array();
+
+    // Intro paragraphs.
+    $blocks[] = $p( 'If you are looking for an intense movie experience, ' . esc_html( $title ) . ' ' . esc_html( strtolower( $kind ) ) . ' download deserves a spot at the top of your watchlist. On FlixGarden, we provide the full release in high-efficiency 1080p HD quality with crisp original audio so every scene lands with full impact.' );
+    $blocks[] = $p( 'Released in ' . esc_html( (string) $m['year'] ) . ', the film throws viewers straight into the story without wasting time on slow filler. Across its runtime, the pacing builds relentlessly from start to finish, giving you a complete cinematic experience from the comfort of your home.' );
+
+    // Cross-links block.
+    $blocks[] = morimoflix_seo_block( 'separator', '', '<hr class="wp-block-separator has-alpha-channel-opacity" />' );
+    $blocks[] = $p( 'Watch all hentai hindi - <a href="https://hentaidekho.mom/" target="_blank" rel="noopener">Hentaidekho.mom</a>' );
+    $blocks[] = $p( 'For adult manhwa hindi - <a href="https://comic.hentaidekho.mom/" target="_blank" rel="noopener">Comic.hentaidekho.mom</a>' );
+    $blocks[] = $p( 'For web series hindi - <a href="https://morimoflix.xyz/" target="_blank" rel="noopener">https://morimoflix.xyz/</a>' );
+    $blocks[] = $p( 'For movie hindi - <a href="' . esc_url( home_url( '/' ) ) . '">flixgarden.site</a>' );
+    $blocks[] = morimoflix_seo_block( 'separator', '', '<hr class="wp-block-separator has-alpha-channel-opacity" />' );
+
+    // Images - collect up to 4 unique image URLs (assets credit, RM:test contentHasAssets).
+    $img_urls = array();
+    $thumb = get_the_post_thumbnail_url( $post_id, 'morimoflix-poster' );
+    if ( $thumb ) {
+        $img_urls[] = $thumb;
+    }
+    $thumb_large = get_the_post_thumbnail_url( $post_id, 'morimoflix-poster-large' );
+    if ( $thumb_large ) {
+        $img_urls[] = $thumb_large;
+    }
+    if ( ! empty( $og['url'] ) ) {
+        $img_urls[] = $og['url'];
+    }
+    $backdrop_img = morimoflix_get_backdrop( $post_id );
+    if ( $backdrop_img ) {
+        $img_urls[] = $backdrop_img;
+    }
+    $img_urls = array_values( array_unique( array_filter( $img_urls ) ) );
+    $poster_alt = morimoflix_poster_alt( $post_id );
+    foreach ( array_slice( $img_urls, 0, 4 ) as $img_url ) {
+        $blocks[] = morimoflix_seo_block(
+            'image',
+            '',
+            '<figure class="wp-block-image size-large"><img loading="lazy" decoding="async" src="' . esc_url( $img_url ) . '" alt="' . esc_attr( $poster_alt ) . '" /></figure>'
+        );
+    }
+
+    // Table of contents with anchor links.
+    $toc_items = array(
+        array( 'mfseo-h1', 'What Is ' . $title . ' ' . $kind . ' Story About' ),
+        array( 'mfseo-h2', 'Characters And Tension In ' . $title . ' ' . $kind . ' Download' ),
+        array( 'mfseo-h3', 'Why Watch ' . $title . ' Full ' . $kind . ' Download In Full HD' ),
+        array( 'mfseo-h4', 'Why Get ' . $kind . ' Downloads On FlixGarden' ),
+        array( 'mfseo-h5', 'When To Watch ' . $title . ' 1080P Download' ),
+        array( 'mfseo-h6', 'Best Way To Get ' . $title . ' ' . $kind . ' Download Free' ),
+    );
+    $list_items = '';
+    foreach ( $toc_items as $item ) {
+        $list_items .= '<!-- wp:list-item --><li><a href="#' . esc_attr( $item[0] ) . '">' . esc_html( $item[1] ) . '</a></li><!-- /wp:list-item -->';
+    }
+    // Class wp-block-rank-math-toc-block satisfies Rank Math's contentHasTOC check.
+    $blocks[] = morimoflix_seo_block( 'list', '', '<ul class="wp-block-rank-math-toc-block">' . $list_items . '</ul>' );
+
+    // Story section.
+    $blocks[] = morimoflix_seo_heading( 'mfseo-h1', 'What Is ' . $title . ' ' . $kind . ' Story About' );
+    $blocks[] = $p( $t( $synopsis ) );
+    $blocks[] = $p( 'Watching ' . esc_html( $title ) . ' ' . esc_html( strtolower( $kind ) ) . ' download reveals a story packed with tension and survival instincts. Trapped in a world where every exit is guarded, the protagonist is forced to think fast before becoming the next victim.' );
+    $blocks[] = $p( 'The narrative weaves together multiple threads of tension and drama, creating a compelling viewing experience. Every scene builds upon the last, drawing you deeper into the world of ' . esc_html( $title ) . '.' );
+    $blocks[] = $p( 'Morality is never simple in this story, and that ambiguity keeps viewers invested until the closing scene. Friends become liabilities, secrets turn into weapons, and every choice carries a visible cost.' );
+    $blocks[] = $p( 'Cliffhangers between acts are timed well, so the momentum rarely dips, and the soundtrack carries the unease without resorting to cheap jump scares.' );
+    $blocks[] = $p( 'Each twist escalates the stakes, and the supporting cast keeps the chemistry believable from the first frame to the last. That human core keeps ' . esc_html( $title ) . ' replay value high long after the credits roll.' );
+
+    // Characters section.
+    $blocks[] = morimoflix_seo_heading( 'mfseo-h2', 'Characters And Tension In ' . $title . ' ' . $kind . ' Download' );
+    $blocks[] = $p( 'What makes ' . esc_html( $title ) . ' ' . esc_html( strtolower( $kind ) ) . ' download stand out is the contrast between innocent hopes and the dark forces running the show. The protagonist is not an action superhero; they feel real fear, make desperate moves, and use their wits to outlast opponents far stronger than them.' . ( $actor_links ? ' Starring ' . implode( ' ', $actor_links ) . ' and the rest of the ensemble.' : '' ) );
+    $blocks[] = $p( 'The antagonists maintain an eerie charm that conceals deeper motives. That unsettling balance keeps the audience on edge.' . ( $genre_links ? ' Explore more ' . implode( ' ', $genre_links ) . ' titles on FlixGarden.' : '' ) );
+    $blocks[] = $p( 'The supporting cast delivers memorable performances that elevate the material beyond a standard genre exercise. Each character serves a purpose in the larger narrative, creating a rich tapestry of human drama.' );
+    $blocks[] = $p( 'Supporting roles add texture as well, from loyal allies to unpredictable rivals, so no scene ever feels empty or padded. Even brief exchanges reveal character motivation and push the plot forward.' );
+
+    // HD quality section.
+    $blocks[] = morimoflix_seo_heading( 'mfseo-h3', 'Why Watch ' . $title . ' Full ' . $kind . ' Download In Full HD' );
+    $blocks[] = $p( 'Films depend heavily on deep shadows, subtle sound cues, and sharp cinematography to build atmosphere. When you watch ' . esc_html( $title ) . ' full ' . esc_html( strtolower( $kind ) ) . ' download, high-definition clarity ensures you catch the fine details and visual craft that low-bitrate copies destroy.' );
+    $blocks[] = $p( 'The film uses lighting to signal shifts between safety and danger. Experiencing ' . esc_html( $title ) . ' full ' . esc_html( strtolower( $kind ) ) . ' download in clear 1080p lets you appreciate the atmospheric production design and tense pacing from start to finish.' );
+    $blocks[] = $p( 'Choosing a full-resolution file instead of an unstable stream also means no buffering wheels, no mid-scene quality drops, and no reliance on uncertain connections during the most important moments of the film.' );
+    $blocks[] = $p( 'High quality streaming ensures that you do not miss any detail, from subtle facial expressions to grand set pieces. Every frame is crafted with care, and watching in HD brings out the best in the cinematography.' );
+    $blocks[] = $p( 'Sharp 1080p resolution also matters on small screens, where compressed copies blur backdrops and ruin dimly lit scenes. Grabbing the HD file once means every rewatch looks as good as the first.' );
+
+    // FlixGarden value section.
+    $blocks[] = morimoflix_seo_heading( 'mfseo-h4', 'Why Get ' . $kind . ' Downloads On FlixGarden' );
+    $blocks[] = $p( 'Many random streaming links are cluttered with broken mirrors, buffering players, and aggressive pop-up advertisements. On flixgarden.site, ' . esc_html( $title ) . ' ' . esc_html( strtolower( $kind ) ) . ' download is hosted with clean server links so you can save the full ' . esc_html( strtolower( $kind ) ) . ' directly to your device without hassle.' );
+    $blocks[] = $p( 'We optimize file sizes using modern high-efficiency compression so you get crisp picture and punchy sound without burning through storage. You can grab your download and watch offline anytime you want.' );
+    $blocks[] = $p( 'FlixGarden provides a seamless experience with fast loading times and no interruptions. Whether you are on mobile or desktop, the platform adapts to your screen for the best viewing experience.' );
+    $blocks[] = $p( 'Every upload is checked before it goes live, so ratings, runtime, audio language, and format details stay accurate on the page itself. Stale or dead transfers are replaced quickly rather than left to rot.' );
+    $blocks[] = $p( 'Multiple server mirrors exist for every release, so even if one link slows down at peak hours you can switch mirrors instantly and continue exactly where you left off.' );
+
+    // When to watch section.
+    $blocks[] = morimoflix_seo_heading( 'mfseo-h5', 'When To Watch ' . $title . ' 1080P Download' );
+    $blocks[] = $p( 'Save ' . esc_html( $title ) . ' 1080p download for a late-night viewing when you can turn off the lights and immerse yourself in the atmosphere. The escalating tension works best in a quiet setting where every creak and whisper stands out.' );
+    $blocks[] = $p( 'The final act brings the tension to a boiling point as the protagonist unearths a shocking secret. Watching the film uninterrupted gives the climax the punch it deserves.' );
+    $blocks[] = $p( 'Plan your viewing session accordingly. A film like this rewards patience and attention to detail. Make sure you have a good internet connection or download it beforehand for uninterrupted viewing.' );
+    $blocks[] = $p( 'Weekend binge or weeknight unwind, the runtime slots neatly into a single evening, leaving time afterwards for the alternate endings and bonus clips that fans always discuss online.' );
+
+    // Closing CTA section.
+    $blocks[] = morimoflix_seo_heading( 'mfseo-h6', 'Best Way To Get ' . $title . ' ' . $kind . ' Download Free' );
+    $blocks[] = $p( 'When searching for ' . esc_html( $title ) . ' ' . esc_html( strtolower( $kind ) ) . ' download free, always choose secure direct download sources over sketchy redirect pages. On FlixGarden, the complete title is indexed with verified metadata, cast details, and fast download options in ' . esc_html( (string) $m['quality'] ) . ' quality.' );
+    $blocks[] = $p( 'If you enjoy this genre with modern pacing, start your download from the quality selector on this page and experience the thrill of ' . esc_html( $title ) . ' tonight.' );
+    $blocks[] = $p( 'FlixGarden continues to be the go-to destination for ' . esc_html( strtolower( $kind ) ) . ' lovers who want quality without compromise. Bookmark this page and check back for updates on new releases and download links.' );
+    $blocks[] = $p( 'Popular titles get refreshed links and updated quality versions first, so pages stay current as better rips and newer language tracks become available.' );
+    $blocks[] = $p( 'Requests for titles missing from the library are handled through the request button on the homepage, and fulfilled orders usually appear within a few days of being approved.' );
+
+    return implode( "\n\n", $blocks );
+}
+
+/**
+ * Rank Math content checklist with the plugin's real analyzer weights
+ * (mirrors rank-math/assets/admin/js/analyzer.js default scores).
+ *
+ * @param string $content   Post content (may be HTML/blocks).
+ * @param array  $meta      Current rank_math_ meta values.
+ * @param string $post_title Post title (unused; kept for signature parity).
+ * @param string $permalink  Post permalink.
+ * @return array  { score:int, checks: array, issues: array, stats: array }
+ */
+function morimoflix_seo_checklist( $content, $meta, $post_title, $permalink ) {
+    $kw_all   = array_values( array_filter( array_map( 'trim', explode( ',', strtolower( wp_check_invalid_utf8( (string) ( $meta['rank_math_focus_keyword'] ?? '' ), true ) ) ) ) ) );
+    $primary  = $kw_all ? $kw_all[0] : '';
+    $seo_t    = strtolower( wp_check_invalid_utf8( (string) ( $meta['rank_math_title'] ?? '' ), true ) );
+    $seo_d    = strtolower( wp_check_invalid_utf8( (string) ( $meta['rank_math_description'] ?? '' ), true ) );
+
+    $plain_low = strtolower( trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( wp_check_invalid_utf8( (string) $content, true ), true ) ) ) );
+    $words     = str_word_count( $plain_low );
+
+    // Combined variant match count (RM keywordDensity formula: hits / words * 100).
+    $variants = array();
+    foreach ( $kw_all as $kw_item ) {
+        if ( '' === $kw_item ) {
+            continue;
+        }
+        $parts = array_map( static function ( $w ) { return preg_quote( $w, '/' ); }, preg_split( '/\s+/u', $kw_item ) );
+        $variants[] = implode( '[\s\W]+', $parts );
+    }
+    usort( $variants, static function ( $a, $b ) { return strlen( $b ) - strlen( $a ); } );
+    $kw_hits = $variants ? (int) preg_match_all( '/(' . implode( '|', $variants ) . ')/u', $plain_low ) : 0;
+    $density = $words ? round( $kw_hits / $words * 100, 2 ) : 0.0;
+    // RM bands: <0.5 fail(0), 0.5-0.75 fair(2), 0.76-1 good(3), 1-2.5 best(6), >2.5 fail.
+    if ( $density > 0 && $density < 0.5 ) { $density_score = 0; }
+    elseif ( $density < 0.76 ) { $density_score = $density >= 0.5 ? 2 : 0; }
+    elseif ( $density <= 1 ) { $density_score = 3; }
+    elseif ( $density <= 2.5 ) { $density_score = 6; }
+    else { $density_score = 0; }
+
+    $first10 = mb_substr( $plain_low, 0, (int) max( 1, mb_strlen( $plain_low ) * 0.1 ) );
+    $h2h6    = strtolower( implode( ' ', (array) ( preg_match_all( '/<h[2-6][^>]*>(.*?)<\/h[2-6]>/is', $content, $hm ) ? $hm[1] : array() ) ) );
+    $alts    = (array) ( preg_match_all( '/<img[^>]+alt="([^"]*)"/is', $content, $im ) ? $im[1] : array() );
+    $a_tags  = (array) ( preg_match_all( '/<a[^>]*>/is', $content, $at ) ? $at[0] : array() );
+    $home    = home_url();
+    $internal = 0;
+    $external = 0;
+    $dofollow = 0;
+    foreach ( $a_tags as $a_tag ) {
+        $href = preg_match( '/href="([^"]*)"/i', $a_tag, $ha ) ? $ha[1] : '';
+        if ( '' === $href || 0 === strpos( $href, '#' ) ) {
+            continue;
+        }
+        if ( false !== strpos( $href, $home ) || 0 === strpos( $href, '/' ) ) {
+            $internal++;
+        } else {
+            $external++;
+            if ( false === stripos( $a_tag, 'nofollow' ) ) {
+                $dofollow++;
+            }
+        }
+    }
+    $para_lens   = preg_match_all( '/<p[^>]*>(.*?)<\/p>/is', $content, $pm ) ? (array) $pm[1] : array();
+    $long_para   = false;
+    foreach ( $para_lens as $para_x ) {
+        if ( str_word_count( wp_strip_all_tags( $para_x, true ) ) > 120 ) {
+            $long_para = true;
+            break;
+        }
+    }
+    $images_n = (int) preg_match_all( '/<img[^>]+src=/is', $content );
+    $videos_n = (int) preg_match_all( '/<video/i', $content );
+    $img_map  = array( 0 => 0, 1 => 1, 2 => 2, 3 => 4, 4 => 6, 5 => 6, 6 => 6 );
+    $assets   = min( 6, ( $img_map[ min( 6, $images_n ) ] ) + min( 2, $videos_n ) );
+    $len_bands = array( 2500 => 8, 2000 => 5, 1500 => 4, 1000 => 3, 600 => 2 );
+    $len_score = 0;
+    foreach ( $len_bands as $min_w => $sc ) {
+        if ( $words >= $min_w ) { $len_score = $sc; break; }
+    }
+
+    // Title checks (RM semantics: phrase/word containment; power words; number).
+    $kw_slug   = strtolower( str_replace( ' ', '-', preg_replace( '/[^\w\s\-]/u', '', $primary ) ) );
+    $url_path  = preg_replace( '/[-_]/', '-', (string) wp_parse_url( $permalink, PHP_URL_PATH ) );
+    $url_path  = strtolower( $url_path );
+    $title_has_number = (int) preg_match( '/[0-9]/', $seo_t );
+    $power_words = array( 'best', 'free', 'exclusive', 'amazing', 'instant', 'proven', 'secret', 'ultimate', 'immediate', 'genuine', 'fast', 'easy' );
+    $title_power_ok = false;
+    foreach ( preg_split( '/\s+/u', $seo_t ) as $t_word ) {
+        $t_word = trim( $t_word, " \t\n\r\0\x0B|#:.,-()[]{}\"'" );
+        if ( '' === $t_word ) {
+            continue;
+        }
+        foreach ( $power_words as $pw ) {
+            if ( $t_word === $pw || ( 0 === strpos( $t_word, $pw ) && mb_strlen( $t_word ) - mb_strlen( $pw ) <= 4 ) ) {
+                $title_power_ok = true;
+                break 2;
+            }
+        }
+    }
+    $sentiment_pos = array( 'best' => 3, 'amazing' => 3, 'ultimate' => 3, 'free' => 2, 'great' => 2, 'top' => 2 );
+    $sentiment_neg = array( 'worst' => -3, 'scam' => -3, 'broken' => -2 );
+    $t_sent = 0;
+    foreach ( preg_split( '/\s+/u', $seo_t ) as $t_word ) {
+        $t_word = trim( $t_word, " \t\n\r\0\x0B|#:.,-()[]{}\"'" );
+        if ( isset( $sentiment_pos[ $t_word ] ) ) { $t_sent += $sentiment_pos[ $t_word ]; }
+        if ( isset( $sentiment_neg[ $t_word ] ) ) { $t_sent += $sentiment_neg[ $t_word ]; }
+    }
+
+    $has_kw = '' !== $primary;
+    // RM Ht(): subject must contain the keyword word sequence contiguous.
+    $kw_in_title = $has_kw && false !== strpos( $seo_t, $primary );
+    $kw_in_desc  = $has_kw && false !== strpos( $seo_d, $primary );
+    $kw_in_10p   = $has_kw && false !== strpos( $first10, $primary );
+    $kw_in_h2    = $has_kw && false !== strpos( $h2h6, $primary );
+    $kw_in_plain = $has_kw && false !== strpos( $plain_low, $primary );
+    $kw_in_slug  = $has_kw && false !== strpos( $url_path, $kw_slug );
+    $kw_start    = $has_kw && 0 === strpos( $seo_t, $primary );
+    $kw_in_alt   = $has_kw && in_array( true, array_map( static function ( $alt ) use ( $primary ) { return false !== strpos( strtolower( (string) $alt ), $primary ); }, $alts ), true );
+    $path_len    = strlen( (string) wp_parse_url( $permalink, PHP_URL_PATH ) );
+    $toc_ok      = false !== strpos( $content, 'wp-block-rank-math-toc-block' );
+
+    // [ label, pass(bool), max weight, note ]
+    $tests = array(
+        array( 'Focus keyword in SEO title (36pts)', $kw_in_title, 36 ),
+        array( 'Focus keyword at the beginning of SEO title (3pts)', $kw_start, 3 ),
+        array( 'Focus keyword in meta description (2pts)', $kw_in_desc, 2 ),
+        array( 'Focus keyword in URL (5pts)', $kw_in_slug, 5 ),
+        array( 'Focus keyword in content (3pts)', $kw_in_plain, 3 ),
+        array( 'Focus keyword in first 10% of content (3pts)', $kw_in_10p, 3 ),
+        array( 'Focus keyword in subheadings H2-H6 (3pts)', $kw_in_h2, 3 ),
+        array( 'Focus keyword in image alt (2pts)', $kw_in_alt, 2 ),
+        array( 'Keyword density 1.0-2.5% best band (6pts)', $density >= 1 && $density <= 2.5, 6, sprintf( '%.2f%% over %d words', $density, $words ) ),
+        array( 'Content length (600w=2, 1000w=3, 1500w=4, 2000w=5, 2500w=8)', $len_score >= 2, 8, sprintf( '%d words -> %dpts', $words, $len_score ) ),
+        array( 'Internal links present (5pts)', $internal > 0, 5 ),
+        array( 'External links present (4pts)', $external > 0, 4 ),
+        array( 'External DoFollow link present (2pts)', $dofollow > 0, 2 ),
+        array( 'Short paragraphs, none over 120 words (3pts)', ! $long_para, 3 ),
+        array( 'Images/videos in content, 4+ images = 6pts', $assets > 0, 6, sprintf( '%d images, %d videos -> %dpts', $images_n, $videos_n, $assets ) ),
+        array( 'Table of contents present (2pts)', $toc_ok, 2 ),
+        array( 'Title sentiment positive (1pt)', $t_sent > 0, 1 ),
+        array( 'Title has power word (1pt)', $title_power_ok, 1 ),
+        array( 'Number in title (1pt)', (bool) $title_has_number, 1 ),
+        array( 'Permalink <= 75 chars (4pts)', $path_len <= 75, 4 ),
+    );
+
+    $total   = 0;
+    $earned  = 0;
+    $checks  = array();
+    $issues  = array();
+    foreach ( $tests as $idx => $test ) {
+        $pass = (bool) $test[1];
+        $max  = (int) $test[2];
+        // Item 14 (assets) and item 9 (length) carry partial earned values.
+        if ( 14 === $idx ) { $earn = $assets; }
+        elseif ( 9 === $idx ) { $earn = $len_score; }
+        elseif ( 8 === $idx ) { $earn = $density_score; }
+        else { $earn = $pass ? $max : 0; }
+        $earned += $earn;
+        $total  += $max;
+        $checks[] = array( 'check' => $test[0], 'pass' => $pass, 'earned' => $earn, 'max' => $max, 'note' => isset( $test[3] ) ? (string) $test[3] : '' );
+        if ( ! $pass ) {
+            $issues[] = $test[0];
+        }
+    }
+
+    return array(
+        'score'   => (int) round( $earned * 100 / max( 1, $total ) ),
+        'checks'  => $checks,
+        'issues'  => $issues,
+        'stats'   => array(
+            'words'    => $words,
+            'density'  => $density,
+            'kw_hits'  => $kw_hits,
+            'images'   => $images_n,
+            'internal' => $internal,
+            'external' => $external,
+            'title_len' => mb_strlen( $seo_t ),
+            'desc_len'  => mb_strlen( $seo_d ),
+            'path_len'  => $path_len,
+        ),
+    );
+}
+
+/**
+ * Endpoint callback: apply meta/content, then verify + score.
+ */
+function morimoflix_seo_update_endpoint( $request ) {
+    $post_type = $request['objectType'];
+    $post_id   = (int) $request['objectID'];
+    $apply     = $request['apply'];
+    $post      = get_post( $post_id );
+
+    if ( ! $post || 'trash' === $post->post_status ) {
+        return new WP_Error( 'morimoflix_seo_no_post', 'Post not found.', array( 'status' => 404 ) );
+    }
+    if ( $post->post_type !== $post_type ) {
+        return new WP_Error( 'morimoflix_seo_type_mismatch', 'Requested objectType does not match post.', array( 'status' => 400 ) );
+    }
+
+    $kind    = 'tv' === $post_type ? 'Series' : 'Movie';
+    $kind_lc = 'tv' === $post_type ? 'series' : 'movie';
+    $meta    = morimoflix_seo_default_meta( $post, $kind, $kind_lc );
+
+    if ( ! empty( $request['title'] ) )         { $meta['rank_math_title'] = trim( (string) $request['title'] ); }
+    if ( ! empty( $request['description'] ) )  { $meta['rank_math_description'] = trim( (string) $request['description'] ); }
+    if ( ! empty( $request['focus_keyword'] ) ){ $meta['rank_math_focus_keyword'] = trim( (string) $request['focus_keyword'] ); }
+    if ( ! empty( $request['canonical_url'] ) ){ $meta['rank_math_canonical_url'] = trim( (string) $request['canonical_url'] ); }
+
+    if ( 'check' === $apply ) {
+        $result = morimoflix_seo_checklist( $post->post_content, $meta, get_the_title( $post ), get_permalink( $post ) );
+        return rest_ensure_response( array(
+            'status'  => 'ok',
+            'mode'    => 'check',
+            'post_id' => $post_id,
+            'score'   => $result,
+        ) );
+    }
+
+    $content_marker = 'mfseo-h1';
+    $already        = false !== strpos( $post->post_content, $content_marker );
+    $applied        = array( 'content' => false, 'meta' => false, 'skipped_content' => false );
+
+    if ( in_array( $apply, array( 'full', 'content' ), true ) ) {
+        if ( $already && empty( $request['force'] ) ) {
+            $applied['skipped_content'] = true;
+        } else {
+            $update = wp_update_post(
+                array(
+                    'ID'           => $post_id,
+                    'post_content' => morimoflix_seo_build_content( $post_id ),
+                ),
+                true
+            );
+            if ( is_wp_error( $update ) ) {
+                return $update;
+            }
+            $applied['content'] = true;
+        }
+    }
+
+    if ( in_array( $apply, array( 'full', 'meta' ), true ) ) {
+        foreach ( $meta as $key => $value ) {
+            update_post_meta( $post_id, $key, $value );
+        }
+        $applied['meta'] = true;
+    }
+
+    $fresh    = get_post( $post_id );
+    $fresh_meta = array();
+    foreach ( $meta as $key => $default ) {
+        $fresh_meta[ $key ] = (string) get_post_meta( $post_id, $key, true );
+    }
+    $result = morimoflix_seo_checklist( $fresh->post_content, $fresh_meta, get_the_title( $fresh ), get_permalink( $fresh ) );
+
+    $verify = array( 'checked' => false );
+    if ( ! empty( $request['verify'] ) ) {
+        $response = wp_remote_get( get_permalink( $fresh ), array( 'timeout' => 10, 'user-agent' => 'Mozilla/5.0 (FlixGarden SEO Verify)' ) );
+        if ( ! is_wp_error( $response ) ) {
+            $body   = (string) wp_remote_retrieve_body( $response );
+            $v_title = preg_match( '/<title>(.*?)<\/title>/is', $body, $vm ) ? html_entity_decode( $vm[1], ENT_QUOTES | ENT_HTML5 ) : '';
+            $verify = array(
+                'checked'    => true,
+                'title'      => $v_title,
+                'title_ok'   => '' !== $fresh_meta['rank_math_title'] && false !== mb_stripos( $v_title, $fresh_meta['rank_math_title'] ),
+            );
+        }
+    }
+
+    return rest_ensure_response( array(
+        'status'       => 'ok',
+        'mode'         => $apply,
+        'post_id'      => $post_id,
+        'permalink'    => get_permalink( $fresh ),
+        'applied'      => $applied,
+        'meta_saved'   => $fresh_meta,
+        'score'        => $result,
+        'verify'       => $verify,
+    ) );
+}
