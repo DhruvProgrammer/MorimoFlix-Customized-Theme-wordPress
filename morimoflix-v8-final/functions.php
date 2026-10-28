@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.3' );
+define( 'MORIMOFLIX_VERSION', '5.6.4' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -3507,14 +3507,16 @@ function morimoflix_seo_build_content( $post_id ) {
         );
     }
 
-    // Table of contents with anchor links.
+    // Table of contents with anchor links. Labels stay SHORT: the list is one
+    // block for Rank Math's paragraph check, which fails blocks over 120
+    // words, so the title is repeated only once.
     $toc_items = array(
-        array( 'mfseo-h1', 'What Is ' . $title . ' ' . $kind . ' Story About' ),
-        array( 'mfseo-h2', 'Characters And Tension In ' . $title . ' ' . $kind . ' Download' ),
-        array( 'mfseo-h3', 'Why Watch ' . $title . ' Full ' . $kind . ' Download In Full HD' ),
+        array( 'mfseo-h1', $title . ' ' . $kind . ' Story Overview' ),
+        array( 'mfseo-h2', 'Characters And Tension' ),
+        array( 'mfseo-h3', 'Why Watch In Full HD' ),
         array( 'mfseo-h4', 'Why Get ' . $kind . ' Downloads On FlixGarden' ),
-        array( 'mfseo-h5', 'When To Watch ' . $title . ' 1080P Download' ),
-        array( 'mfseo-h6', 'Best Way To Get ' . $title . ' ' . $kind . ' Download Free' ),
+        array( 'mfseo-h5', 'When To Watch 1080P' ),
+        array( 'mfseo-h6', 'Best Way To Download Free' ),
     );
     $list_items = '';
     foreach ( $toc_items as $item ) {
@@ -3633,9 +3635,13 @@ function morimoflix_seo_checklist( $content, $meta, $post_title, $permalink ) {
             }
         }
     }
-    $para_lens   = preg_match_all( '/<p[^>]*>(.*?)<\/p>/is', $content, $pm ) ? (array) $pm[1] : array();
+    // Rank Math splits the analysed text into blocks (double newline and/or
+    // block tags) and fails any block over 120 words. Plain-text blocks (the
+    // SEO template emits them) are invisible to <p>-matching alone.
+    $para_blocks = preg_split( '/\n{2,}/', $content );
+    $para_blocks = array_merge( (array) $para_blocks, (array) ( preg_match_all( '/<p[^>]*>(.*?)<\/p>/is', $content, $pm ) ? $pm[1] : array() ) );
     $long_para   = false;
-    foreach ( $para_lens as $para_x ) {
+    foreach ( $para_blocks as $para_x ) {
         if ( str_word_count( wp_strip_all_tags( $para_x, true ) ) > 120 ) {
             $long_para = true;
             break;
