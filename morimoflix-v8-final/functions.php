@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.0' );
+define( 'MORIMOFLIX_VERSION', '5.6.1' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -2865,7 +2865,10 @@ function morimoflix_rankmath_analysis_data( $post_id ) {
     }
     return array(
         'title'   => $rank_title,
-        'content' => $content . "\n" . $rendered,
+        // Feed ONLY the generated extras to the analyzer. Appending raw
+        // $content here double-counted it (editor already holds post_content),
+        // inflating word count and diluting keyword density in every check.
+        'content' => $rendered,
     );
 }
 
@@ -3343,7 +3346,9 @@ function morimoflix_seo_default_meta( $post, $kind, $kind_lc ) {
     return array(
         'rank_math_title'          => $seo_title,
         'rank_math_description'    => $desc,
-        'rank_math_focus_keyword'  => $title . ' ' . $kind_lc . ' download, ' . $title . ' download, ' . $title . ' full ' . $kind_lc . ', ' . $title . ' hindi dubbed',
+        // Primary keyword must slug-match the post slug (/movie/{title-slug}/):
+        // Rank Math's keywordInPermalink check is slugify(keyword) contained in URL.
+        'rank_math_focus_keyword'  => $title . ', ' . $title . ' download, ' . $title . ' full ' . $kind_lc . ', ' . $title . ' hindi dubbed',
         'rank_math_canonical_url'  => get_permalink( $post ),
     );
 }
@@ -3384,13 +3389,21 @@ function morimoflix_seo_build_content( $post_id ) {
     $m     = morimoflix_get_movie_meta( $post_id );
     $kind  = 'tv' === $post->post_type ? 'Series' : 'Movie';
 
-    $synopsis = wp_strip_all_tags( get_the_content( '', false, $post_id ), true );
-    $synopsis = trim( preg_replace( '/\s+/u', ' ', $synopsis ) );
-    // Cap the recycled synopsis so old-template bulk never doubles up inside a rebuild,
-    // and so the capped paragraph still passes the 120-word short-paragraph test.
+    $raw_content = (string) get_the_content( '', false, $post_id );
+    $synopsis    = wp_strip_all_tags( $raw_content, true );
+    $synopsis    = trim( preg_replace( '/\s+/u', ' ', $synopsis ) );
+    // Previous template run: do not recycle template boilerplate as the synopsis.
+    if ( false !== strpos( $raw_content, 'mfseo-h1' ) ) {
+        $synopsis = '';
+    }
+    if ( '' === $synopsis ) {
+        $synopsis = 'Experience ' . $title . ', now available for download on FlixGarden.';
+    }
+    // Rank Math fails any paragraph over 120 words; entities can inflate the
+    // token count past the cap, so keep a margin (cap at 100).
     $syn_words = preg_split( '/\s+/u', $synopsis, -1, PREG_SPLIT_NO_EMPTY );
-    if ( is_array( $syn_words ) && count( $syn_words ) > 120 ) {
-        $synopsis = implode( ' ', array_slice( $syn_words, 0, 120 ) );
+    if ( is_array( $syn_words ) && count( $syn_words ) > 100 ) {
+        $synopsis = implode( ' ', array_slice( $syn_words, 0, 100 ) );
     }
     if ( '' === $synopsis ) {
         $synopsis = 'Experience ' . $title . ', now available for download on FlixGarden.';
