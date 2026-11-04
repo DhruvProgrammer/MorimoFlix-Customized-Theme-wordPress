@@ -113,10 +113,10 @@ html,body{overflow-x:hidden!important;max-width:100%}
     @media (max-width:640px){#heroCarousel .g-card{width:185px;margin-top:14px;}#heroCarousel .g-card .g-poster,#heroCarousel .g-card .g-noimg{height:255px;-webkit-box-reflect:unset;}#heroCarousel .g-reflect{display:none;}#heroCarousel .g-stage{height:310px;}#heroCarousel .g-grid{padding:14px 14px 40px;}#heroCarousel .g-info-col .g-info{text-align:left;}}
     @media (prefers-reduced-motion:reduce){#heroCarousel .g-slide,#heroCarousel .g-backdrop img,#heroCarousel .g-info-col .g-info,#heroCarousel .g-dots button::after{transition:none;}}
     </style>
+    <h1 class="sr-only"><?php esc_html_e( 'Download Free Hindi Dubbed & Telugu Movies in HD — 480p, 720p & 1080p', 'morimoflix-flicker' ); ?></h1>
     <?php
     if ( $hero_query->have_posts() ) :
     ?>
-    <h1 class="sr-only"><?php esc_html_e( 'Watch & Download Movies in HD — Telugu, Hindi & English', 'morimoflix-flicker' ); ?></h1>
     <?php
     $hero_first_backdrop = '';
     if ( isset( $hero_query->posts[0] ) && isset( $hero_query->posts[0]->ID ) ) {
@@ -548,6 +548,55 @@ document.addEventListener('DOMContentLoaded', function() {
     <?php endif;
     wp_reset_postdata();
     ?>
+
+    <!-- Browse Free Downloads By (keyword hub chips) -->
+    <section id="browse-downloads" class="mt-10 md:mt-16 scroll-mt-24">
+        <div class="glass-panel rounded-xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-5 md:p-8">
+            <div class="mb-5 md:mb-6">
+                <h2 class="font-display-hero text-xl md:text-2xl font-extrabold tracking-tight text-white"><?php esc_html_e( 'Browse Free Downloads By', 'morimoflix-flicker' ); ?></h2>
+                <p class="font-body-md text-sm text-muted mt-1"><?php esc_html_e( 'Free HD download hubs — 480p, 720p & 1080p movies, Hindi dubbed titles & web series, updated daily', 'morimoflix-flicker' ); ?></p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <?php
+                /**
+                 * Keyword-hub chip row: fixed post-type archives + curated hub
+                 * pages (each rendered only when a published page with that
+                 * slug exists, so links stay valid on every deployment).
+                 */
+                $morimoflix_hub_chips = array(
+                    array( 'movie', 'Free HD Movies', get_post_type_archive_link( 'movie' ) ),
+                    array( 'live_tv', 'Web Series', get_post_type_archive_link( 'tv' ) ),
+                    array( 'format_list_numbered', 'A-Z Library', '' ),
+                );
+                $morimoflix_list_page = get_page_by_path( 'list' );
+                if ( $morimoflix_list_page instanceof WP_Post && 'publish' === $morimoflix_list_page->post_status ) {
+                    $morimoflix_hub_chips[2][2] = get_permalink( $morimoflix_list_page );
+                }
+                $morimoflix_hub_pages = array(
+                    'bollywood-hindi-movies-download'        => array( 'movie', 'Bollywood Movies' ),
+                    'south-hindi-dubbed-movies-download'     => array( 'gavel', 'South Hindi Dubbed' ),
+                    'hollywood-hindi-dubbed-movies-download' => array( 'cinema', 'Hollywood Hindi' ),
+                    'hindi-dubbed-web-series-download'       => array( 'live_tv', 'Hindi Web Series' ),
+                    'new-this-week'                          => array( 'fiber_new', 'New This Week' ),
+                    'download-quality-guide'                 => array( 'high_quality', '480p 720p 1080p' ),
+                );
+                foreach ( $morimoflix_hub_pages as $morimoflix_hp_slug => $morimoflix_hp ) {
+                    $morimoflix_hp_page = get_page_by_path( $morimoflix_hp_slug );
+                    if ( $morimoflix_hp_page instanceof WP_Post && 'publish' === $morimoflix_hp_page->post_status ) {
+                        $morimoflix_hub_chips[] = array( $morimoflix_hp[0], $morimoflix_hp[1], get_permalink( $morimoflix_hp_page ) );
+                    }
+                }
+                foreach ( $morimoflix_hub_chips as $morimoflix_chip ) :
+                    if ( empty( $morimoflix_chip[2] ) || is_wp_error( $morimoflix_chip[2] ) ) continue;
+                ?>
+                <a href="<?php echo esc_url( $morimoflix_chip[2] ); ?>" class="glass-chip inline-flex items-center gap-2.5 px-5 py-3 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md font-label-caps text-xs tracking-wider uppercase text-muted hover:border-white/25 hover:text-white transition-all">
+                    <span class="material-symbols-outlined text-lg" aria-hidden="true"><?php echo esc_html( $morimoflix_chip[0] ); ?></span>
+                    <?php echo esc_html( $morimoflix_chip[1] ); ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
 
     <!-- Explore by Genre -->
     <section id="explore-genres" class="mt-10 md:mt-16 scroll-mt-24">

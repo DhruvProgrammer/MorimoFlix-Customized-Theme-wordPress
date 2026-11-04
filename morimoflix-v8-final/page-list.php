@@ -116,6 +116,17 @@ html,body{overflow-x:hidden!important;max-width:100%}
         <?php endforeach; ?>
     </div>
 
+    <?php
+    // SEO hub-link block: render page content placed on this template
+    // (marked flixgarden-hub-links by the SEO pipeline). This custom
+    // template is outside the loop, so read content directly from the
+    // queried post instead of using the_content().
+    $list_post = get_post( get_queried_object_id() );
+    if ( $list_post instanceof WP_Post && '' !== trim( (string) $list_post->post_content ) ) {
+        echo '<!-- flixgarden-hub-links -->';
+        echo wp_kses_post( apply_filters( 'the_content', $list_post->post_content ) );
+    }
+    ?>
     <!-- Movie Groups (paginated: 6 letters per ?lpage) -->
     <?php foreach ($list_paged as $letter => $movie_ids) : ?>
         <section id="letter-<?php echo esc_attr($letter); ?>" class="mb-10 scroll-mt-32" aria-labelledby="heading-letter-<?php echo esc_attr($letter); ?>">

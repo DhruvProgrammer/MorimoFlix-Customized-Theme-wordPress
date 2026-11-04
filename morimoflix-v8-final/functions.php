@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.4' );
+define( 'MORIMOFLIX_VERSION', '5.6.7' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -375,6 +375,49 @@ function morimoflix_ensure_blog_page() {
 }
 add_action( 'admin_init', 'morimoflix_ensure_blog_page' );
 add_action( 'after_switch_theme', 'morimoflix_ensure_blog_page' );
+
+/**
+ * Phase 2 (authority): IndexNow key endpoint.
+ *
+ * Serves the Bing IndexNow verification key at the host root, so a batch URL
+ * submission tool can post every sitemap URL to Bing/Yandex via IndexNow.
+ * GET https://host/<key>.txt -> plain-text key (status independent).
+ * The rewrite rule is flushed by the morimoflix_blog_rules_v2 guard above,
+ * because MORIMOFLIX_VERSION changes with every release.
+ */
+function morimoflix_indexnow_key() {
+    return '6f2b9c14d85e07a3f1c24b69da3e8750';
+}
+function morimoflix_indexnow_rules() {
+    add_rewrite_rule( '^' . morimoflix_indexnow_key() . '\.txt$', 'index.php?morimoflix_indexnow=1', 'top' );
+}
+function morimoflix_indexnow_query_vars( $vars ) {
+    $vars[] = 'morimoflix_indexnow';
+    return $vars;
+}
+function morimoflix_indexnow_serve() {
+    if ( get_query_var( 'morimoflix_indexnow' ) ) {
+        // Serve only on the canonical {key}.txt path. Without this guard a query
+        // string ?morimoflix_indexnow=1 could turn any real page/404 into a
+        // key-only response (content replacement / cache-variant risk).
+        $uri   = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+        $path  = '';
+        $parts = wp_parse_url( $uri );
+        if ( isset( $parts['path'] ) ) {
+            $path = (string) $parts['path'];
+        }
+        if ( '/' . morimoflix_indexnow_key() . '.txt' !== $path ) {
+            return;
+        }
+        header( 'Content-Type: text/plain; charset=utf-8' );
+        header( 'X-Robots-Tag: noindex, nofollow' );
+        echo esc_html( morimoflix_indexnow_key() );
+        exit;
+    }
+}
+add_action( 'init', 'morimoflix_indexnow_rules', 20 );
+add_filter( 'query_vars', 'morimoflix_indexnow_query_vars' );
+add_action( 'template_redirect', 'morimoflix_indexnow_serve', 1 );
 
 /**
  * Performance: invalidate /list/ transient (fixes 4859ms audit). No poster change.
@@ -2104,7 +2147,7 @@ add_action('wp_head', 'morimoflix_seo_head_tags', 1);
 function morimoflix_document_title_parts( $title ) {
     if ( is_front_page() || is_home() ) {
         // Front: site name + short value prop; tagline handled via description, not title.
-        $title['title'] = 'FlixGarden — Watch Telugu & Hindi Dubbed Movies in HD';
+        $title['title'] = 'FlixGarden — Free Hindi Dubbed & Telugu Movies Download HD';
         if ( isset( $title['tagline'] ) ) unset( $title['tagline'] );
         if ( isset( $title['site'] ) ) unset( $title['site'] );
     } elseif ( is_tax('genre') || is_tax('actor') || is_category() || is_tag() ) {
@@ -2941,7 +2984,7 @@ function morimoflix_rankmath_title_guard( $title ) {
         return $title;
     }
     if ( is_front_page() || is_home() ) {
-        return 'FlixGarden — Watch Telugu & Hindi Dubbed Movies in HD';
+        return 'FlixGarden — Free Hindi Dubbed & Telugu Movies Download HD';
     }
     if ( is_post_type_archive( 'movie' ) ) {
         return 'Movies — Hindi Dubbed & Telugu HD';
@@ -3268,7 +3311,7 @@ function morimoflix_register_seo_update_route() {
                 'objectType'    => array(
                     'type'              => 'string',
                     'default'           => 'movie',
-                    'enum'              => array( 'movie', 'tv' ),
+                    'enum'              => array( 'movie', 'tv', 'page' ),
                     'sanitize_callback' => 'sanitize_key',
                 ),
                 'apply'         => array(
@@ -3774,6 +3817,22 @@ function morimoflix_seo_update_endpoint( $request ) {
     }
     if ( $post->post_type !== $post_type ) {
         return new WP_Error( 'morimoflix_seo_type_mismatch', 'Requested objectType does not match post.', array( 'status' => 400 ) );
+    }
+    if ( 'page' === $post_type ) {
+        if ( in_array( $apply, array( 'full', 'content' ), true ) ) {
+            return new WP_Error(
+                'morimoflix_seo_page_content_locked',
+                'Content rebuild is only supported for movie/tv posts. Pages ship with fixed templates; use apply=meta.',
+                array( 'status' => 400 )
+            );
+        }
+        if ( empty( $request['title'] ) || empty( $request['description'] ) ) {
+            return new WP_Error(
+                'morimoflix_seo_page_meta_explicit',
+                'For pages pass explicit title and description; movie defaults would be wrong here.',
+                array( 'status' => 400 )
+            );
+        }
     }
 
     $kind    = 'tv' === $post_type ? 'Series' : 'Movie';
