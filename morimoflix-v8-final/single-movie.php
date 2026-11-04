@@ -266,10 +266,20 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
 .mf-syn-extra img{max-width:100%;height:auto;border-radius:12px;border:1px solid rgba(255,255,255,0.1);margin:0.5rem 0 1rem;display:block;}
 .mf-syn-extra p{margin:0 0 1rem;line-height:1.7;color:#B9B3B4;}
 .mf-syn-extra h2,.mf-syn-extra h3{color:#fff;margin:1.2rem 0 0.5rem;font-size:1.1rem;}
-.mf-syn-toggle{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:1rem;padding:0.62rem 1rem;min-height:44px;box-sizing:border-box;background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.25);border-radius:50px;color:#E50914;font-family:inherit;font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;transition:background .3s ease,border-color .3s ease;}
+.mf-syn-toggle{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:1rem;padding:0.62rem 1rem;min-height:44px;box-sizing:border-box;background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.25);border-radius:50px;color:#FF5A62;font-family:inherit;font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;transition:background .3s ease,border-color .3s ease;}
 .mf-syn-toggle:hover{background:rgba(229,9,20,0.16);border-color:#E50914;}
 .mf-syn-toggle .mf-syn-chev{display:inline-block;transition:transform .3s ease;}
 .mf-syn-open .mf-syn-toggle .mf-syn-chev{transform:rotate(180deg);}
+
+/* About-card collapse: JS adds .mf-about-clip only when JS runs (no-JS = full text) */
+.mf-about-clip{position:relative;max-height:380px;overflow:hidden;}
+.mf-about-clip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:110px;background:linear-gradient(180deg,rgba(11,11,15,0) 0%,#131317 88%);pointer-events:none;}
+.mf-card.mf-syn-open .mf-about-clip{max-height:none;}
+.mf-card.mf-syn-open .mf-about-clip::after{display:none;}
+.mf-about-toggle{display:none;margin-top:1.2rem;}
+.mf-about-ready .mf-about-toggle{display:flex;}
+#mfAboutCard{scroll-margin-top:84px;}
+@media print{.mf-about-clip{max-height:none!important;}.mf-about-clip::after{display:none!important;}.mf-about-toggle{display:none!important;}}
 </style>
 
 <main class="mf-detail">
@@ -387,16 +397,51 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
         <!-- ============ ABOUT ============ -->
         <section class="mf-sec" aria-labelledby="mf-about-h">
             <p class="mf-eyebrow"><?php esc_html_e( 'About the movie', 'morimoflix-flicker' ); ?></p>
-            <div class="mf-card">
+            <div class="mf-card" id="mfAboutCard">
                 <h2 class="mf-h2" id="mf-about-h">
                     <?php esc_html_e( 'About', 'morimoflix-flicker' ); ?> <?php the_title(); ?> <span class="accent">(<?php echo esc_html( $meta['year'] ); ?>)</span>
                 </h2>
-                <div class="mf-prose">
+                <div class="mf-prose" id="mfAboutProse">
                     <?php if ( '' === $mf_excerpt || morimoflix_texts_are_duplicate( $mf_excerpt, $meta['tagline'] ) ) : ?>
                         <?php the_content(); ?>
                         <?php echo morimoflix_movie_thin_content( get_the_ID() ); ?>
                     <?php endif; ?>
                 </div>
+                <?php if ( '' === $mf_excerpt || morimoflix_texts_are_duplicate( $mf_excerpt, $meta['tagline'] ) ) : ?>
+                <button type="button" class="mf-syn-toggle mf-about-toggle" data-more="<?php esc_attr_e( 'Show More', 'morimoflix-flicker' ); ?>" data-less="<?php esc_attr_e( 'Show Less', 'morimoflix-flicker' ); ?>" onclick="morimoflixSynToggle(this)" aria-expanded="false" aria-controls="mfAboutProse">
+                    <span class="mf-syn-toggle-label"><?php esc_html_e( 'Show More', 'morimoflix-flicker' ); ?></span>
+                    <span class="mf-syn-chev" aria-hidden="true">&#8964;</span>
+                </button>
+                <script>
+                /* Collapses the About card only when the content really overflows
+                   (progressive enhancement: with JS off the full text stays visible). */
+                (function () {
+                    var prose = document.getElementById('mfAboutProse');
+                    var card  = document.getElementById('mfAboutCard');
+                    if (!prose || !card) return;
+                    function fit() {
+                        /* User expanded the card: never re-clip, never fight them. */
+                        if (card.classList.contains('mf-syn-open')) return;
+                        if (prose.scrollHeight > 460) {
+                            prose.classList.add('mf-about-clip');
+                            card.classList.add('mf-about-ready');
+                        } else {
+                            prose.classList.remove('mf-about-clip');
+                            card.classList.remove('mf-about-ready');
+                        }
+                    }
+                    /* Re-measured on every size change: covers webfont swap, late
+                       images inside the content, and rotation/resize after load. */
+                    fit();
+                    if (window.ResizeObserver) {
+                        new ResizeObserver(function () { requestAnimationFrame(fit); }).observe(prose);
+                    } else {
+                        window.addEventListener('load', fit);
+                        if (document.fonts && document.fonts.ready) { document.fonts.ready.then(fit); }
+                    }
+                })();
+                </script>
+                <?php endif; ?>
                 <?php if ( ! empty( $meta['posted_by'] ) || get_the_modified_date() ) : ?>
                 <p class="mf-byline">
                     <?php if ( ! empty( $meta['posted_by'] ) ) : ?>
@@ -565,13 +610,20 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
 
 <script>
 function morimoflixSynToggle(btn) {
-    var box = btn.closest('.mf-synopsis');
+    /* '.mf-synopsis' = hero synopsis; 'mfAboutCard' ids + parent fallback keep the
+       About toggle workable even if a plugin re-nests the markup. */
+    var box = btn.closest('.mf-synopsis') || btn.closest('#mfAboutCard') || btn.parentElement;
     if (!box) return;
     var open = box.classList.toggle('mf-syn-open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
     var label = btn.querySelector('.mf-syn-toggle-label');
     if (label) {
-        label.textContent = open ? 'Show Less' : 'Show More';
+        label.textContent = open ? (btn.getAttribute('data-less') || 'Show Less') : (btn.getAttribute('data-more') || 'Show More');
+    }
+    if (!open && box.id === 'mfAboutCard') {
+        /* Collapsing shrinks the card above the click point: bring it back into view. */
+        var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        box.scrollIntoView({ block: 'start', behavior: reduced ? 'instant' : 'smooth' });
     }
 }
 </script>
