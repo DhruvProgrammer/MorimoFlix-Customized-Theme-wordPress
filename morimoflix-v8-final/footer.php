@@ -167,69 +167,6 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 
-<!-- Welcome Popup -->
-<div id="welcomePopup" class="fixed inset-0 z-[400] hidden">
-    <div class="absolute inset-0 bg-black/85 backdrop-blur-sm" id="welcomePopupOverlay"></div>
-    <div class="relative flex items-center justify-center min-h-screen p-4">
-        <div class="glass-strong relative w-full max-w-sm mx-2 bg-[#161616]/70 backdrop-blur-xl border border-primary/20 rounded-lg shadow-[0_0_30px_rgba(229,9,20,0.25)]">
-            <button type="button" id="welcomePopupClose" class="absolute top-3 right-3 text-muted hover:text-white transition-colors p-1 z-10">
-                <span class="material-symbols-outlined text-xl">close</span>
-            </button>
-            <div class="flex flex-col items-center text-center p-6 pt-8 space-y-5">
-                <span class="material-symbols-outlined text-primary text-5xl" style="font-variation-settings: 'FILL' 1;">movie</span>
-                <h2 class="text-xl md:text-2xl font-bold text-white">Can't find your movie?</h2>
-                <p class="text-sm text-on-surface-variant">Request it and we'll add it for you!</p>
-                <div class="flex flex-col w-full gap-3 mt-2">
-                    <button type="button" id="welcomePopupRequest" class="btn-primary w-full uppercase tracking-wider text-sm">
-                        Request Now
-                    </button>
-                    <button type="button" id="welcomePopupNoThanks" class="w-full bg-transparent text-muted hover:text-white font-medium text-sm py-2 transition-colors">
-                        No Thanks
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-(function() {
-    var dismissedAt = null;
-    try { dismissedAt = localStorage.getItem('morimoflix_welcome_dismissed_at'); } catch (e) {}
-    if (dismissedAt && (Date.now() - parseInt(dismissedAt, 10)) < 600000) return;
-    var popup = document.getElementById('welcomePopup');
-    if (!popup) return;
-    setTimeout(function() {
-        popup.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-    }, 1600);
-
-    function closePopup() {
-        popup.classList.add('hidden');
-        document.body.style.overflow = '';
-        try { localStorage.setItem('morimoflix_welcome_dismissed_at', Date.now().toString()); } catch (e) {}
-    }
-
-    document.getElementById('welcomePopupClose').addEventListener('click', closePopup);
-    document.getElementById('welcomePopupOverlay').addEventListener('click', closePopup);
-    document.getElementById('welcomePopupNoThanks').addEventListener('click', closePopup);
-    document.getElementById('welcomePopupRequest').addEventListener('click', function() {
-        closePopup();
-        if (window.morimoflixOpenRequest) { window.morimoflixOpenRequest(); return; }
-        var modal = document.getElementById('movieRequestModal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            modal.removeAttribute('hidden');
-            modal.setAttribute('aria-hidden', 'false');
-            document.body.classList.add('movie-request-modal-active');
-        }
-    });
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && !popup.classList.contains('hidden')) closePopup();
-    });
-})();
-</script>
-
 <!-- Motion (standalone Framer Motion) — SAFE: only { animate } used (scroll/stagger unused, verified). -->
 <script type="module">
   if (!window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
