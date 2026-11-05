@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.7' );
+define( 'MORIMOFLIX_VERSION', '5.6.8' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -3499,12 +3499,12 @@ function morimoflix_seo_build_content( $post_id ) {
     $blocks[] = $p( 'If you are looking for an intense movie experience, ' . esc_html( $title ) . ' ' . esc_html( strtolower( $kind ) ) . ' download deserves a spot at the top of your watchlist. On FlixGarden, we provide the full release in high-efficiency 1080p HD quality with crisp original audio so every scene lands with full impact.' );
     $blocks[] = $p( 'Released in ' . esc_html( (string) $m['year'] ) . ', the film throws viewers straight into the story without wasting time on slow filler. Across its runtime, the pacing builds relentlessly from start to finish, giving you a complete cinematic experience from the comfort of your home.' );
 
-    // Cross-links block.
+    // Cross-links block (clean internal topical discovery).
     $blocks[] = morimoflix_seo_block( 'separator', '', '<hr class="wp-block-separator has-alpha-channel-opacity" />' );
-    $blocks[] = $p( 'Watch all hentai hindi - <a href="https://hentaidekho.mom/" target="_blank" rel="noopener">Hentaidekho.mom</a>' );
-    $blocks[] = $p( 'For adult manhwa hindi - <a href="https://comic.hentaidekho.mom/" target="_blank" rel="noopener">Comic.hentaidekho.mom</a>' );
-    $blocks[] = $p( 'For web series hindi - <a href="https://morimoflix.xyz/" target="_blank" rel="noopener">https://morimoflix.xyz/</a>' );
-    $blocks[] = $p( 'For movie hindi - <a href="' . esc_url( home_url( '/' ) ) . '">flixgarden.site</a>' );
+    $blocks[] = $p( 'Browse complete collection - <a href="' . esc_url( home_url( '/list/' ) ) . '">A–Z Movie Library</a>' );
+    $blocks[] = $p( 'Explore HD Movies - <a href="' . esc_url( get_post_type_archive_link( 'movie' ) ?: home_url( '/?type=movies' ) ) . '">All Full HD Movies</a>' );
+    $blocks[] = $p( 'Explore Web Series - <a href="' . esc_url( get_post_type_archive_link( 'tv' ) ?: home_url( '/?type=series' ) ) . '">Web Series & Shows</a>' );
+    $blocks[] = $p( 'Official website - <a href="' . esc_url( home_url( '/' ) ) . '">FlixGarden</a>' );
     $blocks[] = morimoflix_seo_block( 'separator', '', '<hr class="wp-block-separator has-alpha-channel-opacity" />' );
 
     // Images - UNIQUE artwork only (assets credit, RM:test contentHasAssets).

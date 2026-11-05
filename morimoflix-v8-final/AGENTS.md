@@ -1,4 +1,4 @@
-# AGENTS.md - Morimoflix v9.28 Theme
+# AGENTS.md - Morimoflix v9.29 Theme
 
 # Available specialists:
 
@@ -24,7 +24,7 @@
 
 - **Theme Name:** Morimoflix Flicker
 - **Text domain:** `morimoflix-flicker` (not `morimoflix`)
-- **Version:** `5.6.7` (in `style.css` header AND `functions.php` `MORIMOFLIX_VERSION` — keep in sync)
+- **Version:** `5.6.8` (in `style.css` header AND `functions.php` `MORIMOFLIX_VERSION` — keep in sync)
 - **PHP:** 7.4+ required
 - **Structure:** Flat — ALL PHP functions in `functions.php`. No `inc/`, `production/`, or `templates/` directories.
 - **CSS:** Tailwind CDN in `header.php` `<style>` block. `style.css` contains ONLY the WordPress theme header comment — no CSS rules.
@@ -74,16 +74,16 @@ Use `!important` to override inline styles. Place the `<style>` block in the sam
 | **NEVER** create new folders | Always work in the SAME folder (`morimoflix-v8-final/`) |
 | **NEVER** create multiple zips | Only ONE zip file at a time |
 | How to version | Rename the zip: `morimoflix-v8.zip` → `morimoflix-v8.1.zip` |
-| AGENTS.md title | Must reflect current version: `# AGENTS.md - Morimoflix v9.28 Theme` |
-| File Structure path | Must reflect current version: `morimoflix-v9.28/` |
-| Current version | **v9.28** (TV series: import, `single-tv.php`, season/quality/codec accordion; v9.28 adds "Show More" collapse on the About card of single-movie/single-tv (long-form SEO content clipped to a teaser, no-JS = full text); v9.27 adds download-intent homepage title/H1, "Browse Free Downloads By" hub chips, IndexNow key endpoint, seo-update route accepts pages for homepage RM meta) |
+| AGENTS.md title | Must reflect current version: `# AGENTS.md - Morimoflix v9.29 Theme` |
+| File Structure path | Must reflect current version: `morimoflix-v9.29/` |
+| Current version | **v9.29** (UX & SEO recovery: removed intrusive 1.6s cold-visit welcome popup, removed adult/hentai cross-links in movie content, replaced with clean internal discovery links; v9.28 added "Show More" collapse on the About card of single-movie/single-tv) |
 
 ### Version Bump Workflow
 
 1. Make code changes inside `morimoflix-v8-final/`
-2. Delete the old zip: `Remove-Item "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.14.zip"`
+2. Delete the old zip: `Remove-Item "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.28.zip"`
 3. Bump version in AGENTS.md title and file structure path
-4. Recreate zip with bumped name: `morimoflix-v9.28.zip`
+4. Recreate zip with bumped name: `morimoflix-v9.29.zip`
 5. No new folders. No extra copies. One zip only.
 
 ### Zip Packaging Command
@@ -91,13 +91,13 @@ Use `!important` to override inline styles. Place the `<style>` block in the sam
 ```powershell
 # After every change, bump version and recreate zip
 Set-Location "C:\Users\MR.PC\Desktop\theme\morimoflix-v8-final"
-Compress-Archive -Path "style.css","functions.php","header.php","footer.php","front-page.php","index.php","single.php","single-movie.php","single-tv.php","search.php","archive.php","page.php","page-list.php","taxonomy-genre.php","taxonomy-actor.php","single-blog.php","archive-blog.php","home.php","404.php","assets","inc","AGENTS.md","README.md" -DestinationPath "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.28.zip" -Force
+Compress-Archive -Path "style.css","functions.php","header.php","footer.php","front-page.php","index.php","single.php","single-movie.php","single-tv.php","search.php","archive.php","page.php","page-list.php","taxonomy-genre.php","taxonomy-actor.php","single-blog.php","archive-blog.php","home.php","404.php","assets","inc","AGENTS.md","README.md" -DestinationPath "C:\Users\MR.PC\Desktop\theme\morimoflix-v9.29.zip" -Force
 ```
 
 ## File Structure
 
 ```
-morimoflix-v9.28/
+morimoflix-v9.29/
 ├── style.css              # WordPress theme header ONLY (no CSS rules!)
 ├── functions.php          # ALL PHP: CPTs, taxonomies, meta boxes, enqueue, helpers, AJAX
 ├── header.php             # Tailwind config, <style> block, navbar, mobile menu, modals + JS
