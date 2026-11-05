@@ -349,22 +349,34 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
             <noscript><style>.mf-syn-extra{display:block!important;}.mf-syn-toggle{display:none!important;}</style></noscript>
 
             <div class="mf-meta">
+                <?php
+                $detail_rating = morimoflix_format_rating( $meta['rating'] );
+                $detail_duration = morimoflix_format_duration( $meta['duration'] );
+                ?>
+                <?php if ( ! empty( $detail_rating ) ) : ?>
                 <div class="mf-meta-item">
                     <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;" aria-hidden="true">star</span>
-                    <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $meta['rating'] ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'IMDb', 'morimoflix-flicker' ); ?></div></div>
+                    <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $detail_rating ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'IMDb', 'morimoflix-flicker' ); ?></div></div>
                 </div>
+                <?php endif; ?>
+                <?php if ( ! empty( $detail_duration ) ) : ?>
                 <div class="mf-meta-item">
                     <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
-                    <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $meta['duration'] ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Duration', 'morimoflix-flicker' ); ?></div></div>
+                    <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $detail_duration ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Duration', 'morimoflix-flicker' ); ?></div></div>
                 </div>
+                <?php endif; ?>
+                <?php if ( ! empty( $meta['year'] ) ) : ?>
                 <div class="mf-meta-item">
                     <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
                     <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $meta['year'] ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Year', 'morimoflix-flicker' ); ?></div></div>
                 </div>
+                <?php endif; ?>
+                <?php if ( ! empty( $meta['quality'] ) ) : ?>
                 <div class="mf-meta-item plain">
                     <span class="material-symbols-outlined" aria-hidden="true">hd</span>
                     <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $meta['quality'] ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Quality', 'morimoflix-flicker' ); ?></div></div>
                 </div>
+                <?php endif; ?>
                 <?php if ( ! empty( $meta['language'] ) ) : ?>
                 <div class="mf-meta-item plain mf-meta-lang">
                     <span class="material-symbols-outlined" aria-hidden="true">language</span>
@@ -588,15 +600,23 @@ letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;m
                         $rmeta = morimoflix_get_movie_meta();
                 ?>
                 <a class="mf-rel-card group" href="<?php the_permalink(); ?>" aria-label="<?php echo esc_attr( morimoflix_card_label() ); ?>">
-                    <div class="mf-rel-img">
-                        <?php if ( has_post_thumbnail() ) : ?>
-                            <?php the_post_thumbnail( 'medium', array( 'class' => 'w-full h-full object-cover', 'alt' => morimoflix_poster_alt(), 'loading' => 'lazy', 'decoding' => 'async' ) ); ?>
-                        <?php else : ?>
-                            <div class="w-full h-full" style="background:linear-gradient(135deg,#1B1B21,#0B0B0F);"></div>
-                        <?php endif; ?>
+                    <div class="mf-rel-img relative overflow-hidden rounded-md">
+                        <?php morimoflix_render_poster( get_the_ID(), 'medium', 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300' ); ?>
                     </div>
                     <h3 class="mf-rel-t"><?php echo esc_html( get_the_title() ); ?></h3>
-                    <p class="mf-rel-m"><?php printf( esc_html__( '%s IMDb', 'morimoflix-flicker' ), esc_html( $rmeta['rating'] ) ); ?> · <?php echo esc_html( $rmeta['year'] ); ?></p>
+                    <?php
+                    $rel_rating = morimoflix_format_rating( $rmeta['rating'] );
+                    $rel_sub = array();
+                    if ( ! empty( $rel_rating ) ) {
+                        $rel_sub[] = $rel_rating . ' IMDb';
+                    }
+                    if ( ! empty( $rmeta['year'] ) ) {
+                        $rel_sub[] = $rmeta['year'];
+                    }
+                    ?>
+                    <?php if ( ! empty( $rel_sub ) ) : ?>
+                    <p class="mf-rel-m"><?php echo esc_html( implode( ' · ', $rel_sub ) ); ?></p>
+                    <?php endif; ?>
                 </a>
                 <?php
                     endwhile;

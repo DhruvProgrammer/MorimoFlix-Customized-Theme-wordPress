@@ -19,7 +19,6 @@
     <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet"/>
-    <link rel="stylesheet" href="<?php echo esc_url( get_template_directory_uri() . '/assets/css/app.css?ver=' . MORIMOFLIX_VERSION ); ?>">
     <style>
         /* Midnight Crimson CSS Variables — Pantone mapped (Theme-Color-Guide §13) */
         :root {

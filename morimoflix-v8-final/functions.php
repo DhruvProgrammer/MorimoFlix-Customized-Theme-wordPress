@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MORIMOFLIX_VERSION', '5.6.8' );
+define( 'MORIMOFLIX_VERSION', '5.6.9' );
 define( 'MORIMOFLIX_DIR', get_template_directory() );
 define( 'MORIMOFLIX_URI', get_template_directory_uri() );
 
@@ -462,11 +462,19 @@ function morimoflix_enqueue_assets() {
     // duplicate requests and LiteSpeed/Cloudflare combine issues that
     // caused empty icon boxes (□) on live.
 
-    // Main Stylesheet
+    // Main Stylesheet (Header metadata)
     wp_enqueue_style(
         'morimoflix-style',
         get_stylesheet_uri(),
         array(),
+        MORIMOFLIX_VERSION
+    );
+
+    // Application Tailwind Stylesheet
+    wp_enqueue_style(
+        'morimoflix-app',
+        get_template_directory_uri() . '/assets/css/app.css',
+        array( 'morimoflix-style' ),
         MORIMOFLIX_VERSION
     );
 
@@ -709,7 +717,7 @@ function morimoflix_get_movie_meta( $post_id = null ) {
 
     return array(
         'rating'    => get_post_meta( $post_id, '_movie_rating', true ) ?: '',
-        'duration'  => get_post_meta( $post_id, '_movie_duration', true ) ?: '120M',
+        'duration'  => get_post_meta( $post_id, '_movie_duration', true ) ?: '',
         'quality'   => get_post_meta( $post_id, '_movie_quality', true ) ?: 'HD',
         'language'  => get_post_meta( $post_id, '_movie_language', true ) ?: '',
         'is_live'   => get_post_meta( $post_id, '_movie_live', true ),
@@ -910,6 +918,107 @@ function morimoflix_texts_are_duplicate( $a, $b ) {
     }
 
     return $a === $b;
+}
+
+/**
+ * Format rating cleanly (e.g. "8.4"). Returns empty string if missing or zero.
+ */
+function morimoflix_format_rating( $rating ) {
+    if ( empty( $rating ) ) {
+        return '';
+    }
+    $r = (float) trim( (string) $rating );
+    if ( $r <= 0 ) {
+        return '';
+    }
+    return number_format( $r, 1 );
+}
+
+/**
+ * Format duration into human-readable cinema runtime (e.g. "2h 19m", "1h 45m").
+ * Handles "139M", "139m", "139", "2H 19M", "2h 19m", "90 min".
+ * Returns empty string if missing, zero, or "0M".
+ */
+function morimoflix_format_duration( $raw_duration ) {
+    if ( empty( $raw_duration ) ) {
+        return '';
+    }
+    $d = trim( (string) $raw_duration );
+    $u = strtoupper( $d );
+    if ( '' === $d || '0' === $d || '0M' === $u || '0 MIN' === $u || '0H 0M' === $u || '0H' === $u ) {
+        return '';
+    }
+
+    // Pattern 1: Pure digits in minutes, e.g. "139" or "90"
+    if ( preg_match( '/^(\d+)\s*$/', $d, $m ) ) {
+        $mins = (int) $m[1];
+        if ( $mins <= 0 ) return '';
+        if ( $mins < 60 ) return $mins . 'm';
+        $h = floor( $mins / 60 );
+        $rem = $mins % 60;
+        return $rem > 0 ? "{$h}h {$rem}m" : "{$h}h";
+    }
+
+    // Pattern 2: Digits with M/min, e.g. "139M", "139m", "139min", "139 min"
+    if ( preg_match( '/^(\d+)\s*m(?:in)?$/i', $d, $m ) ) {
+        $mins = (int) $m[1];
+        if ( $mins <= 0 ) return '';
+        if ( $mins < 60 ) return $mins . 'm';
+        $h = floor( $mins / 60 );
+        $rem = $mins % 60;
+        return $rem > 0 ? "{$h}h {$rem}m" : "{$h}h";
+    }
+
+    // Pattern 3: Already hours and minutes, e.g. "2H 19M", "2h 19m", "2h", "1h 45min"
+    if ( preg_match( '/^(\d+)\s*h(?:ours?)?(?:\s*(\d+)\s*m(?:in)?)?$/i', $d, $m ) ) {
+        $h = (int) $m[1];
+        $rem = isset( $m[2] ) ? (int) $m[2] : 0;
+        if ( $h <= 0 && $rem <= 0 ) return '';
+        if ( $h <= 0 ) return $rem . 'm';
+        return $rem > 0 ? "{$h}h {$rem}m" : "{$h}h";
+    }
+
+    return $d;
+}
+
+/**
+ * Render movie/tv poster with fallback to TMDB backdrop or elegant cinema placeholder
+ */
+function morimoflix_render_poster( $post_id = null, $size = 'medium', $extra_classes = '', $img_attrs = array() ) {
+    if ( ! $post_id ) {
+        $post_id = get_the_ID();
+    }
+    $title = get_the_title( $post_id );
+    $alt   = morimoflix_poster_alt( $post_id );
+
+    if ( has_post_thumbnail( $post_id ) ) {
+        $default_attrs = array(
+            'class'   => 'w-full h-full object-cover ' . $extra_classes,
+            'alt'     => $alt,
+            'loading' => 'lazy',
+            'decoding'=> 'async',
+        );
+        $attrs = wp_parse_args( $img_attrs, $default_attrs );
+        echo get_the_post_thumbnail( $post_id, $size, $attrs );
+        return;
+    }
+
+    // Fallback 1: TMDB Backdrop URL from meta
+    $backdrop = get_post_meta( $post_id, '_tmdb_backdrop', true );
+    if ( ! empty( $backdrop ) ) {
+        echo '<img src="' . esc_url( $backdrop ) . '" alt="' . esc_attr( $alt ) . '" class="w-full h-full object-cover ' . esc_attr( $extra_classes ) . '" loading="lazy" decoding="async" />';
+        return;
+    }
+
+    // Fallback 2: Sleek cinema card placeholder with film clapper icon & title
+    ?>
+    <div class="w-full h-full bg-gradient-to-br from-[#1C1215] via-[#120B0D] to-[#0A0505] flex flex-col items-center justify-center p-3 text-center border border-white/5 relative overflow-hidden group-hover:border-primary/50 transition-colors">
+        <div class="w-10 h-10 rounded-full bg-white/[0.04] flex items-center justify-center mb-2 text-[#E50914] group-hover:scale-110 group-hover:bg-[#E50914]/10 transition-all">
+            <span class="material-symbols-outlined text-2xl leading-none" aria-hidden="true">movie</span>
+        </div>
+        <span class="text-[11px] font-medium text-white/70 line-clamp-2 max-w-[90%] leading-tight"><?php echo esc_html( $title ); ?></span>
+    </div>
+    <?php
 }
 
 /**

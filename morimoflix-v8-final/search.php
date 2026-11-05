@@ -53,15 +53,9 @@ html,body{overflow-x:hidden!important;max-width:100%}
             ?>
             <div class="group cursor-pointer relative">
                 <a href="<?php the_permalink(); ?>" class="block" aria-label="<?php echo esc_attr( morimoflix_card_label() ); ?>">
-                    <div class="glass-card relative poster-aspect overflow-hidden bg-surface-container border border-white/10 group-hover:border-primary transition-all duration-500 group-hover:shadow-[0_0_25px_rgba(255,0,0,0.4)]">
-                        <?php if ( has_post_thumbnail() ) : ?>
-                            <?php the_post_thumbnail( 'medium', array( 'class' => 'w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 brightness-90 group-hover:brightness-110', 'alt' => morimoflix_poster_alt(), 'loading' => 'lazy', 'decoding' => 'async' ) ); ?>
-                        <?php else : ?>
-                            <div class="w-full h-full bg-gradient-to-br from-surface to-black flex items-center justify-center p-6 text-center opacity-40 group-hover:opacity-80 transition-opacity">
-                                <span class="font-label-mono-sm text-xs tracking-widest text-primary uppercase"><?php echo $post_type === 'movie' ? 'No_Poster' : 'Post'; ?></span>
-                            </div>
-                        <?php endif; ?>
-                        <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60"></div>
+                    <div class="glass-card relative poster-aspect overflow-hidden bg-surface-container border border-white/10 group-hover:border-primary transition-all duration-500 group-hover:shadow-[0_0_25px_rgba(255,0,0,0.4)] rounded-lg">
+                        <?php morimoflix_render_poster( get_the_ID(), 'medium', 'group-hover:scale-110 transition-transform duration-700 brightness-90 group-hover:brightness-110' ); ?>
+                        <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60 pointer-events-none"></div>
                     </div>
                 </a>
                 <?php if ( $post_type === 'movie' && $meta['quality'] === '4K' ) : ?>
@@ -80,10 +74,20 @@ html,body{overflow-x:hidden!important;max-width:100%}
                 <?php endif; ?>
                 <div class="mt-3">
                     <h3 title="<?php echo esc_attr( get_the_title() ); ?>" class="font-headline-md text-sm text-white group-hover:text-primary transition-colors normal-case tracking-normal leading-snug line-clamp-2 min-h-[2.6em] break-words"><?php the_title(); ?></h3>
-                    <?php if ( $post_type === 'movie' ) : ?>
-                    <div class="flex items-center gap-3 mt-1.5">
-                        <span class="font-label-mono-sm text-xs text-gold font-bold">IMDb <?php echo esc_html( $meta['rating'] ); ?></span>
-                        <span class="font-label-mono-sm text-xs text-on-surface-variant/60"><?php echo esc_html( $meta['duration'] ); ?></span>
+                    <?php if ( $post_type === 'movie' || $post_type === 'tv' ) : ?>
+                    <?php
+                    $search_rating = morimoflix_format_rating( $meta['rating'] );
+                    $search_duration = morimoflix_format_duration( $meta['duration'] );
+                    ?>
+                    <div class="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <?php if ( ! empty( $search_rating ) ) : ?>
+                            <span class="font-label-mono-sm text-xs text-gold font-bold inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs" style="font-variation-settings: 'FILL' 1;">star</span><?php echo esc_html( $search_rating ); ?></span>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $search_duration ) ) : ?>
+                            <span class="font-label-mono-sm text-xs text-on-surface-variant/60"><?php echo esc_html( $search_duration ); ?></span>
+                        <?php elseif ( ! empty( $meta['year'] ) ) : ?>
+                            <span class="font-label-mono-sm text-xs text-on-surface-variant/60"><?php echo esc_html( $meta['year'] ); ?></span>
+                        <?php endif; ?>
                     </div>
                     <?php else : ?>
                     <div class="flex items-center gap-3 mt-1.5">
@@ -110,12 +114,12 @@ html,body{overflow-x:hidden!important;max-width:100%}
         <!-- No Results -->
         <div class="text-center py-20">
             <span class="material-symbols-outlined text-6xl text-dim mb-6 block">search_off</span>
-            <h2 class="font-headline-md text-headline-md text-white mb-4">NO RESULTS FOUND</h2>
+            <h2 class="font-headline-md text-headline-md text-white mb-4"><?php esc_html_e( 'NO RESULTS FOUND', 'morimoflix-flicker' ); ?></h2>
             <p class="font-label-mono-sm text-on-surface-variant/60 tracking-widest uppercase mb-8">
-                QUERY "<?php echo esc_html( get_search_query() ); ?>" RETURNED NO MATCHES
+                <?php printf( esc_html__( 'QUERY "%s" RETURNED NO MATCHES', 'morimoflix-flicker' ), esc_html( get_search_query() ) ); ?>
             </p>
             <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="btn-gradient btn-primary inline-block px-8 py-3 text-xs tracking-[0.4em] font-bold uppercase text-white rounded-full">
-                Return Home
+                <?php esc_html_e( 'Return Home', 'morimoflix-flicker' ); ?>
             </a>
         </div>
         <?php endif; ?>

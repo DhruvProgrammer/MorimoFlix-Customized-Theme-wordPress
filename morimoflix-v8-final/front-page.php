@@ -115,21 +115,23 @@ html,body{overflow-x:hidden!important;max-width:100%}
     <?php
     if ( $hero_query->have_posts() ) :
     ?>
-    <h1 class="sr-only"><?php esc_html_e( 'Download Free Hindi Dubbed & Telugu Movies in HD — 480p, 720p & 1080p', 'morimoflix-flicker' ); ?></h1>
+    <h1 class="sr-only"><?php echo esc_html( get_bloginfo( 'name' ) ); ?> — <?php echo esc_html( get_bloginfo( 'description' ) ?: __( 'Watch & Download Movies and Series in HD', 'morimoflix-flicker' ) ); ?></h1>
     <section id="heroCarousel" class="mb-8 md:mb-12 relative overflow-hidden min-h-[560px] lg:h-[520px] rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-[#534343]/30 red-glow bg-[#0A0505]">
         <?php
         $hero_slides = array();
         while ( $hero_query->have_posts() ) :
             $hero_query->the_post();
             $is_first = empty( $hero_slides );
+            $hero_post_id = get_the_ID();
             $hero_slides[] = array(
+                'id'        => $hero_post_id,
                 'permalink' => get_permalink(),
                 'title'     => get_the_title(),
                 'excerpt'   => wp_trim_words( get_the_excerpt(), 30 ),
                 'meta'      => morimoflix_get_movie_meta(),
-                'thumb'     => get_the_post_thumbnail( get_the_ID(), 'medium', array( 'class' => 'g-poster', 'alt' => morimoflix_poster_alt(), 'loading' => $is_first ? 'eager' : 'lazy', 'decoding' => 'async', 'fetchpriority' => $is_first ? 'high' : 'auto' ) ),
+                'thumb'     => get_the_post_thumbnail( $hero_post_id, 'medium', array( 'class' => 'g-poster', 'alt' => morimoflix_poster_alt(), 'loading' => $is_first ? 'eager' : 'lazy', 'decoding' => 'async', 'fetchpriority' => $is_first ? 'high' : 'auto' ) ),
                 'has_thumb' => has_post_thumbnail(),
-                'backdrop'  => get_the_post_thumbnail_url( get_the_ID(), 'large' ),
+                'backdrop'  => morimoflix_get_backdrop( $hero_post_id ),
             );
         endwhile;
         wp_reset_postdata();
@@ -152,6 +154,8 @@ html,body{overflow-x:hidden!important;max-width:100%}
                             <div class="g-card glass-card">
                                 <?php if ( $hero_s['has_thumb'] ) : ?>
                                     <?php echo $hero_s['thumb']; ?>
+                                <?php elseif ( ! empty( $hero_s['backdrop'] ) ) : ?>
+                                    <img class="g-poster" src="<?php echo esc_url( $hero_s['backdrop'] ); ?>" alt="<?php echo esc_attr( $hero_s['title'] ); ?>" loading="lazy" decoding="async">
                                 <?php else : ?>
                                     <div class="g-noimg"><span class="material-symbols-outlined">movie</span></div>
                                 <?php endif; ?>
@@ -185,15 +189,25 @@ html,body{overflow-x:hidden!important;max-width:100%}
                     $hero_t1 = rtrim( $hero_m[1] );
                     $hero_t2 = $hero_m[2];
                 }
+                $hero_rating = morimoflix_format_rating( $hero_s['meta']['rating'] );
+                $hero_duration = morimoflix_format_duration( $hero_s['meta']['duration'] );
                 ?>
                 <div class="g-info<?php echo $hero_i === 0 ? ' active' : ''; ?>" data-i="<?php echo (int) $hero_i; ?>"<?php echo $hero_i === 0 ? '' : ' aria-hidden="true"'; ?>>
                     <span class="inline-block bg-[#E50914] text-white font-label-caps text-xs font-bold px-2.5 md:px-3 py-1 uppercase tracking-[0.2em] rounded mb-3 md:mb-4"><?php esc_html_e( 'Newly Released', 'morimoflix-flicker' ); ?></span>
                     <h2 class="font-display-hero text-3xl md:text-4xl lg:text-5xl text-white mb-3 md:mb-4 leading-[1.08] tracking-tighter font-extrabold text-shadow-[0_0_30px_rgba(255,0,0,0.3)]"<?php echo $hero_i === 0 ? '' : ' aria-hidden="true"'; ?>><a href="<?php echo esc_url( $hero_s['permalink'] ); ?>"<?php echo $hero_i === 0 ? '' : ' tabindex="-1"'; ?> class="hover:text-[#FFB4AB] transition-colors"><?php echo esc_html( $hero_t1 ); ?><?php if ( $hero_t2 !== '' ) : ?> <span class="text-[#E50914]"><?php echo esc_html( $hero_t2 ); ?></span><?php endif; ?></a></h2>
                     <div class="flex items-center flex-wrap gap-x-3 gap-y-1 text-metadata font-metadata text-white mb-3 md:mb-4">
-                        <span class="text-[#F5C518] flex items-center gap-1"><span class="material-symbols-outlined text-base" style="font-variation-settings: 'FILL' 1;">star</span> <?php echo esc_html( $hero_s['meta']['rating'] ); ?></span>
-                        <span class="text-muted"><?php echo esc_html( $hero_s['meta']['year'] ); ?></span>
-                        <span class="text-muted flex items-center gap-1"><span class="material-symbols-outlined text-base">schedule</span> <?php echo esc_html( $hero_s['meta']['duration'] ); ?></span>
-                        <span class="bg-[#FFB4AB]/20 text-[#FFB4AB] border border-[#FFB4AB]/50 font-label-caps text-label-caps px-1.5 py-0.5 rounded"><?php echo esc_html( $hero_s['meta']['quality'] ); ?></span>
+                        <?php if ( ! empty( $hero_rating ) ) : ?>
+                            <span class="text-[#F5C518] flex items-center gap-1"><span class="material-symbols-outlined text-base" style="font-variation-settings: 'FILL' 1;">star</span> <?php echo esc_html( $hero_rating ); ?></span>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $hero_s['meta']['year'] ) ) : ?>
+                            <span class="text-muted"><?php echo esc_html( $hero_s['meta']['year'] ); ?></span>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $hero_duration ) ) : ?>
+                            <span class="text-muted flex items-center gap-1"><span class="material-symbols-outlined text-base">schedule</span> <?php echo esc_html( $hero_duration ); ?></span>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $hero_s['meta']['quality'] ) ) : ?>
+                            <span class="bg-[#FFB4AB]/20 text-[#FFB4AB] border border-[#FFB4AB]/50 font-label-caps text-label-caps px-1.5 py-0.5 rounded"><?php echo esc_html( $hero_s['meta']['quality'] ); ?></span>
+                        <?php endif; ?>
                     </div>
                     <p class="g-excerpt line-clamp-2 text-muted font-body-md text-body-lg mb-6 md:mb-8 max-w-xl leading-relaxed"><?php echo esc_html( $hero_s['excerpt'] ); ?></p>
                     <div class="flex flex-col sm:flex-row gap-2.5 md:gap-4">
@@ -207,7 +221,7 @@ html,body{overflow-x:hidden!important;max-width:100%}
         </div>
     </section>
     <?php else : ?>
-    <h1 class="sr-only"><?php esc_html_e( 'Download Free Hindi Dubbed & Telugu Movies in HD — 480p, 720p & 1080p', 'morimoflix-flicker' ); ?></h1>
+    <h1 class="sr-only"><?php echo esc_html( get_bloginfo( 'name' ) ); ?> — <?php echo esc_html( get_bloginfo( 'description' ) ?: __( 'Watch & Download Movies and Series in HD', 'morimoflix-flicker' ) ); ?></h1>
     <section id="heroCarousel" class="mb-12 md:mb-20 mt-16 md:mt-20 relative overflow-hidden rounded-xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/5 bg-[#0A0505]">
         <div class="g-backdrop" aria-hidden="true"></div>
         <div class="g-grid">
@@ -440,13 +454,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <div class="group cursor-pointer relative">
             <a href="<?php the_permalink(); ?>" class="block" aria-label="<?php echo esc_attr( morimoflix_card_label() ); ?>">
                 <div class="relative poster-aspect overflow-hidden bg-surface-container border border-white/10 group-hover:border-primary transition-all duration-500 group-hover:shadow-[0_0_25px_rgba(255,0,0,0.4)] rounded-lg">
-                    <?php if ( has_post_thumbnail() ) : ?>
-                        <?php the_post_thumbnail( 'medium', array( 'class' => 'w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 brightness-90 group-hover:brightness-110', 'alt' => morimoflix_poster_alt(), 'loading' => 'lazy', 'decoding' => 'async' ) ); ?>
-                    <?php else : ?>
-                        <div class="w-full h-full bg-gradient-to-br from-surface to-black flex items-center justify-center p-4 md:p-6 text-center opacity-40 group-hover:opacity-80 transition-opacity">
-                            <span class="font-label-mono-sm text-xs tracking-widest text-primary uppercase"><?php esc_html_e( 'No Poster', 'morimoflix-flicker' ); ?></span>
-                        </div>
-                    <?php endif; ?>
+                    <?php morimoflix_render_poster( get_the_ID(), 'medium', 'group-hover:scale-110 transition-transform duration-700 brightness-90 group-hover:brightness-110' ); ?>
                     <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60"></div>
                 </div>
             </a>
@@ -467,8 +475,24 @@ document.addEventListener('DOMContentLoaded', function() {
             <div class="mt-2 md:mt-3">
                 <h3 title="<?php echo esc_attr( get_the_title() ); ?>" class="font-headline-md text-sm text-white group-hover:text-primary transition-colors normal-case tracking-normal leading-snug line-clamp-2 min-h-[2.6em] break-words"><?php the_title(); ?></h3>
                 <div class="flex items-center gap-2 md:gap-3 mt-1 md:mt-1.5">
-                    <span class="font-label-mono-sm text-xs text-gold font-bold"><?php printf( esc_html__( 'IMDb %s', 'morimoflix-flicker' ), esc_html( $meta['rating'] ) ); ?></span>
-                    <span class="font-label-mono-sm text-xs text-on-surface-variant/60"><?php echo esc_html( $meta['duration'] ); ?></span>
+                    <?php
+                    $clean_rating = morimoflix_format_rating( $meta['rating'] );
+                    $clean_duration = morimoflix_format_duration( $meta['duration'] );
+                    if ( ! empty( $clean_rating ) ) :
+                    ?>
+                        <span class="font-label-mono-sm text-xs text-gold font-bold flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[13px] leading-none" style="font-variation-settings: 'FILL' 1;">star</span>
+                            <?php echo esc_html( $clean_rating ); ?>
+                        </span>
+                    <?php endif; ?>
+                    <?php if ( ! empty( $clean_duration ) ) : ?>
+                        <span class="font-label-mono-sm text-xs text-on-surface-variant/60 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[13px] leading-none">schedule</span>
+                            <?php echo esc_html( $clean_duration ); ?>
+                        </span>
+                    <?php elseif ( ! empty( $meta['year'] ) ) : ?>
+                        <span class="font-label-mono-sm text-xs text-on-surface-variant/60"><?php echo esc_html( $meta['year'] ); ?></span>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

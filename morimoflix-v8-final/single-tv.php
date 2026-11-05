@@ -385,14 +385,19 @@ if ( have_posts() ) :
                         <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $series['status'] ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Status', 'morimoflix-flicker' ); ?></div></div>
                     </div>
                     <?php endif; ?>
+                    <?php
+                    $tv_rating = morimoflix_format_rating( $series['rating'] );
+                    if ( ! empty( $tv_rating ) ) :
+                    ?>
                     <div class="mf-meta-item">
                         <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;" aria-hidden="true">star</span>
-                        <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $series['rating'] ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'IMDb', 'morimoflix-flicker' ); ?></div></div>
+                        <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $tv_rating ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'IMDb', 'morimoflix-flicker' ); ?></div></div>
                     </div>
+                    <?php endif; ?>
                     <?php if ( $series['episode_run'] > 0 ) : ?>
                     <div class="mf-meta-item plain">
                         <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
-                        <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( $series['episode_run'] ); ?><?php esc_html_e( 'M', 'morimoflix-flicker' ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Per Episode', 'morimoflix-flicker' ); ?></div></div>
+                        <div class="min-w-0"><div class="mf-meta-v"><?php echo esc_html( morimoflix_format_duration( $series['episode_run'] ) ); ?></div><div class="mf-meta-l"><?php esc_html_e( 'Per Episode', 'morimoflix-flicker' ); ?></div></div>
                     </div>
                     <?php endif; ?>
                     <?php if ( $series['first_air'] ) : ?>
@@ -715,16 +720,24 @@ if ( have_posts() ) :
                             $related->the_post();
                             $rmeta = morimoflix_get_series_meta();
                     ?>
-                    <a class="mf-rel-card" href="<?php the_permalink(); ?>" aria-label="<?php echo esc_attr( morimoflix_card_label() ); ?>">
-                        <div class="mf-rel-img">
-                            <?php if ( has_post_thumbnail() ) : ?>
-                                <?php the_post_thumbnail( 'medium', array( 'class' => 'w-full h-full object-cover', 'alt' => morimoflix_poster_alt(), 'loading' => 'lazy', 'decoding' => 'async' ) ); ?>
-                            <?php else : ?>
-                                <div class="w-full h-full" style="background:linear-gradient(135deg,#1B1B21,#0B0B0F);"></div>
-                            <?php endif; ?>
+                    <a class="mf-rel-card group" href="<?php the_permalink(); ?>" aria-label="<?php echo esc_attr( morimoflix_card_label() ); ?>">
+                        <div class="mf-rel-img relative overflow-hidden rounded-md">
+                            <?php morimoflix_render_poster( get_the_ID(), 'medium', 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300' ); ?>
                         </div>
                         <h3 class="mf-rel-t"><?php echo esc_html( get_the_title() ); ?></h3>
-                        <p class="mf-rel-m"><?php printf( esc_html__( '%s IMDb', 'morimoflix-flicker' ), esc_html( $rmeta['rating'] ) ); ?><?php echo $rmeta['seasons'] > 0 ? ' · ' . esc_html( sprintf( _n( '%s season', '%s seasons', $rmeta['seasons'], 'morimoflix-flicker' ), $rmeta['seasons'] ) ) : ''; ?></p>
+                        <?php
+                        $tv_rel_rating = morimoflix_format_rating( $rmeta['rating'] );
+                        $tv_rel_sub = array();
+                        if ( ! empty( $tv_rel_rating ) ) {
+                            $tv_rel_sub[] = $tv_rel_rating . ' IMDb';
+                        }
+                        if ( $rmeta['seasons'] > 0 ) {
+                            $tv_rel_sub[] = sprintf( _n( '%s season', '%s seasons', $rmeta['seasons'], 'morimoflix-flicker' ), $rmeta['seasons'] );
+                        }
+                        ?>
+                        <?php if ( ! empty( $tv_rel_sub ) ) : ?>
+                        <p class="mf-rel-m"><?php echo esc_html( implode( ' · ', $tv_rel_sub ) ); ?></p>
+                        <?php endif; ?>
                     </a>
                     <?php
                         endwhile;

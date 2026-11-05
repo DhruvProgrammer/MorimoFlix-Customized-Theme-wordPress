@@ -26,8 +26,8 @@ get_header();
                 <?php the_content(); ?>
                 <?php $wc = str_word_count(wp_strip_all_tags(get_the_content('', false, get_the_ID()), true)); if ($wc < 180) : ?>
                 <div class="mt-8 p-5 rounded-xl border border-white/10 bg-white/[0.03]">
-                    <h2 class="font-display-hero text-lg font-bold text-white mb-3">About this story</h2>
-                    <p class="text-sm text-muted leading-relaxed">Explore more cool movies, south movie hindi dubbed & Telugu movies on FlixGarden — new south movie hindi dubbed 2025-2026, Hindi dubbed movies & new south movies in HD. Browse by genre or the A–Z Library to find any title fast.</p>
+                    <h2 class="font-display-hero text-lg font-bold text-white mb-3"><?php esc_html_e( 'About this story', 'morimoflix-flicker' ); ?></h2>
+                    <p class="text-sm text-muted leading-relaxed"><?php esc_html_e( 'Explore movies and series on FlixGarden. Browse by genre or check the A–Z Library to find high-definition titles, release info, cast details, and download options fast.', 'morimoflix-flicker' ); ?></p>
                 </div>
                 <?php endif; ?>
             </div>
